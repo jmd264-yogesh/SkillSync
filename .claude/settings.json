@@ -1,0 +1,63 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm lint)",
+      "Bash(pnpm lint:fix)",
+      "Bash(pnpm build)",
+      "Bash(pnpm dev)",
+      "Bash(pnpm test)",
+      "Bash(pnpm test:unit)",
+      "Bash(pnpm test:integration)",
+      "Bash(pnpm test:coverage)",
+      "Bash(pnpm format)",
+      "Bash(pnpm db:generate)",
+      "Bash(pnpm db:studio)",
+      "Bash(npx prisma generate)",
+      "Bash(npx prisma studio)",
+      "Bash(npx prisma validate)",
+      "Bash(npx prisma format)",
+      "Bash(git status)",
+      "Bash(git log*)",
+      "Bash(git diff*)",
+      "Bash(git branch*)",
+      "Bash(git fetch*)",
+      "Bash(git stash list)",
+      "Bash(node .claude/hooks/*)"
+    ],
+    "deny": []
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/post-edit-lint.js"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/pre-bash-safety.js"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/on-stop-reminder.js"
+          }
+        ]
+      }
+    ]
+  }
+}

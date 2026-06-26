@@ -1,0 +1,494 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Auth & Users ────────────────────────────────────────────
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  EMPLOYEE
+}
+
+model User {
+  id             String    @id @default(uuid())
+  email          String    @unique
+  name           String
+  passwordHash   String    @map("password_hash")
+  role           UserRole  @default(EMPLOYEE)
+  employeeId      String?                  @unique @map("employee_id")
+  employee        Employee?                @relation(fields: [employeeId], references: [id])
+  reviewCycles    ReviewCycle[]
+  feedbackForms   FeedbackForm[]
+  formAssignments FeedbackFormAssignment[] @relation("AssignmentCreator")
+  createdAt       DateTime                 @default(now()) @map("created_at")
+  updatedAt       DateTime                 @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+// ─── Organization Structure ──────────────────────────────────
+
+model Coe {
+  id          String       @id @default(uuid())
+  name        String       @unique
+  description String?
+  employees   Employee[]
+  coeSkills   CoeSkill[]
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  @@map("coes")
+}
+
+model Designation {
+  id                String              @id @default(uuid())
+  name              String              @unique
+  level             Int
+  description       String?
+  employees         Employee[]
+  designationSkills DesignationSkill[]
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  @@map("designations")
+}
+
+model CompetencyLevel {
+  id          String   @id @default(uuid())
+  level       Int      @unique
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("competency_levels")
+}
+
+// ─── Employee ────────────────────────────────────────────────
+
+model Employee {
+  id              String          @id @default(uuid())
+  employeeCode    String          @unique @map("employee_code")
+  name            String
+  email           String          @unique
+  user            User?
+  coe             Coe?            @relation(fields: [coeId], references: [id])
+  coeId           String?         @map("coe_id")
+  designation     Designation?    @relation(fields: [designationId], references: [id])
+  designationId   String?         @map("designation_id")
+  manager         Employee?       @relation("ManagerReports", fields: [managerId], references: [id])
+  managerId       String?         @map("manager_id")
+  reportees       Employee[]      @relation("ManagerReports")
+  employeeSkills  EmployeeSkill[]
+  evidences       Evidence[]
+  allocations          ProjectAllocation[]
+  managedProjects      Project[]                @relation("ProjectManager")
+  reviewerAssignments  FeedbackFormAssignment[] @relation("AssignmentReviewer")
+  revieweeAssignments  FeedbackFormAssignment[] @relation("AssignmentEmployee")
+  feedbackSummaries    FeedbackSummary[]
+  createdAt            DateTime                 @default(now()) @map("created_at")
+  updatedAt            DateTime                 @updatedAt @map("updated_at")
+
+  @@map("employees")
+}
+
+// ─── Skills ──────────────────────────────────────────────────
+
+model Skill {
+  id                String              @id @default(uuid())
+  name              String              @unique
+  description       String?
+  category          SkillCategory       @default(SKILL)
+  employeeSkills      EmployeeSkill[]
+  coeSkills           CoeSkill[]
+  designationSkills   DesignationSkill[]
+  projectRequirements ProjectSkillRequirement[]
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+
+  @@map("skills")
+}
+
+enum SkillCategory {
+  SKILL
+  FRAMEWORK
+  CONCEPT
+  TOOL
+  CERTIFICATION
+}
+
+// ─── Skill Mapping ───────────────────────────────────────────
+
+model CoeSkill {
+  id               String   @id @default(uuid())
+  coe              Coe      @relation(fields: [coeId], references: [id], onDelete: Cascade)
+  coeId            String   @map("coe_id")
+  skill            Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  skillId          String   @map("skill_id")
+  targetCompetency Int      @map("target_competency")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@unique([coeId, skillId])
+  @@map("coe_skills")
+}
+
+model DesignationSkill {
+  id               String      @id @default(uuid())
+  designation      Designation @relation(fields: [designationId], references: [id], onDelete: Cascade)
+  designationId    String      @map("designation_id")
+  skill            Skill       @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  skillId          String      @map("skill_id")
+  targetCompetency Int         @map("target_competency")
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+
+  @@unique([designationId, skillId])
+  @@map("designation_skills")
+}
+
+// ─── Employee Skills & Validation ────────────────────────────
+
+model EmployeeSkill {
+  id                 String              @id @default(uuid())
+  employee           Employee            @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employeeId         String              @map("employee_id")
+  skill              Skill               @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  skillId            String              @map("skill_id")
+  selfAssessedLevel  Int                 @map("self_assessed_level")
+  validatedLevel     Int?                @map("validated_level")
+  status             SkillApprovalStatus @default(PENDING)
+  reviewComment      String?             @map("review_comment")
+  reviewedBy         String?             @map("reviewed_by")
+  reviewedAt         DateTime?           @map("reviewed_at")
+  evidences          Evidence[]
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+
+  @@unique([employeeId, skillId])
+  @@map("employee_skills")
+}
+
+enum SkillApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ─── Evidence ────────────────────────────────────────────────
+
+model Evidence {
+  id              String        @id @default(uuid())
+  employeeSkill   EmployeeSkill @relation(fields: [employeeSkillId], references: [id], onDelete: Cascade)
+  employeeSkillId String        @map("employee_skill_id")
+  employee        Employee      @relation(fields: [employeeId], references: [id])
+  employeeId      String        @map("employee_id")
+  type            EvidenceType
+  title           String
+  description     String?
+  fileUrl         String?       @map("file_url")
+  score           String?
+  issuedAt        DateTime?     @map("issued_at")
+  expiresAt       DateTime?     @map("expires_at")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  @@map("evidences")
+}
+
+enum EvidenceType {
+  CERTIFICATION
+  ASSESSMENT_SCORE
+  PROJECT_DOCUMENT
+  SUPPORTING_DOCUMENT
+}
+
+// ─── Learning Paths ──────────────────────────────────────────
+
+model LearningPath {
+  id          String         @id @default(uuid())
+  title       String
+  description String?
+  skillId     String         @map("skill_id")
+  fromLevel   Int            @map("from_level")
+  toLevel     Int            @map("to_level")
+  items       LearningItem[]
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  @@map("learning_paths")
+}
+
+model LearningItem {
+  id             String          @id @default(uuid())
+  learningPath   LearningPath    @relation(fields: [learningPathId], references: [id], onDelete: Cascade)
+  learningPathId String          @map("learning_path_id")
+  title          String
+  description    String?
+  type           LearningType
+  url            String?
+  duration       String?
+  order          Int
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  @@map("learning_items")
+}
+
+enum LearningType {
+  INTERNAL_TRAINING
+  EXTERNAL_COURSE
+  CERTIFICATION
+  ASSESSMENT
+  PROJECT_BASED
+  DOCUMENTATION
+}
+
+// ─── Resource Management ─────────────────────────────────────
+
+enum ProjectStatus {
+  PLANNING
+  ACTIVE
+  COMPLETED
+  ON_HOLD
+}
+
+enum RequirementPriority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+model Project {
+  id                String                    @id @default(uuid())
+  name              String
+  description       String?
+  domain            String?
+  startDate         DateTime?                 @map("start_date")
+  endDate           DateTime?                 @map("end_date")
+  teamSize          Int?                      @map("team_size")
+  status               ProjectStatus             @default(ACTIVE)
+  projectManagerId     String?                   @map("project_manager_id")
+  projectManager       Employee?                 @relation("ProjectManager", fields: [projectManagerId], references: [id])
+  skillRequirements    ProjectSkillRequirement[]
+  allocations          ProjectAllocation[]
+  feedbackAssignments  FeedbackFormAssignment[]
+  createdAt            DateTime                  @default(now()) @map("created_at")
+  updatedAt            DateTime                  @updatedAt @map("updated_at")
+
+  @@map("projects")
+}
+
+model ProjectSkillRequirement {
+  id            String              @id @default(uuid())
+  project       Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId     String              @map("project_id")
+  skill         Skill               @relation(fields: [skillId], references: [id])
+  skillId       String              @map("skill_id")
+  requiredLevel Int                 @map("required_level")
+  headcount     Int                 @default(1)
+  priority      RequirementPriority @default(MEDIUM)
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+
+  @@unique([projectId, skillId])
+  @@map("project_skill_requirements")
+}
+
+model ProjectAllocation {
+  id         String    @id @default(uuid())
+  project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId  String    @map("project_id")
+  employee   Employee  @relation(fields: [employeeId], references: [id])
+  employeeId String    @map("employee_id")
+  allocation Float
+  role       String?
+  startDate  DateTime? @map("start_date")
+  endDate    DateTime? @map("end_date")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  @@unique([projectId, employeeId])
+  @@map("project_allocations")
+}
+
+// ─── Feedback & Promotion Readiness ──────────────────────────
+
+enum ReviewCycleStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+  ARCHIVED
+}
+
+model ReviewCycle {
+  id          String            @id @default(uuid())
+  name        String
+  startDate   DateTime          @map("start_date")
+  endDate     DateTime          @map("end_date")
+  status      ReviewCycleStatus @default(DRAFT)
+  createdById String            @map("created_by_id")
+  createdBy   User              @relation(fields: [createdById], references: [id])
+  forms       FeedbackForm[]
+  assignments FeedbackFormAssignment[]
+  summaries   FeedbackSummary[]
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+
+  @@map("review_cycles")
+}
+
+enum FeedbackFormType {
+  PM_FEEDBACK    // created by CDM/Manager, assigned to Project Managers
+  CDM_ASSESSMENT // created by HR/Admin, assigned to CDMs/Managers
+  HR_FEEDBACK    // created by HR/Admin, filled directly by HR
+}
+
+model FeedbackForm {
+  id            String                 @id @default(uuid())
+  title         String
+  description   String?
+  formType      FeedbackFormType       @map("form_type")
+  reviewCycleId String                 @map("review_cycle_id")
+  reviewCycle   ReviewCycle            @relation(fields: [reviewCycleId], references: [id])
+  createdById   String                 @map("created_by_id")
+  createdBy     User                   @relation(fields: [createdById], references: [id])
+  sections      FeedbackFormSection[]
+  assignments   FeedbackFormAssignment[]
+  createdAt     DateTime               @default(now()) @map("created_at")
+  updatedAt     DateTime               @updatedAt @map("updated_at")
+
+  @@map("feedback_forms")
+}
+
+model FeedbackFormSection {
+  id          String                 @id @default(uuid())
+  formId      String                 @map("form_id")
+  form        FeedbackForm           @relation(fields: [formId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  order       Int
+  questions   FeedbackFormQuestion[]
+  createdAt   DateTime               @default(now()) @map("created_at")
+  updatedAt   DateTime               @updatedAt @map("updated_at")
+
+  @@map("feedback_form_sections")
+}
+
+enum QuestionType {
+  RATING // 1-5 numeric scale
+  TEXT   // free-form narrative
+}
+
+model FeedbackFormQuestion {
+  id        String               @id @default(uuid())
+  sectionId String               @map("section_id")
+  section   FeedbackFormSection  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  text      String
+  type      QuestionType
+  required  Boolean              @default(true)
+  order     Int
+  responses FeedbackResponse[]
+  createdAt DateTime             @default(now()) @map("created_at")
+  updatedAt DateTime             @updatedAt @map("updated_at")
+
+  @@map("feedback_form_questions")
+}
+
+enum AssignmentStatus {
+  PENDING
+  IN_PROGRESS
+  SUBMITTED
+  OVERDUE
+}
+
+model FeedbackFormAssignment {
+  id            String           @id @default(uuid())
+  reviewCycleId String           @map("review_cycle_id")
+  reviewCycle   ReviewCycle      @relation(fields: [reviewCycleId], references: [id])
+  formId        String           @map("form_id")
+  form          FeedbackForm     @relation(fields: [formId], references: [id])
+  reviewerId    String           @map("reviewer_id")
+  reviewer      Employee         @relation("AssignmentReviewer", fields: [reviewerId], references: [id])
+  employeeId    String           @map("employee_id")
+  employee      Employee         @relation("AssignmentEmployee", fields: [employeeId], references: [id])
+  projectId     String?          @map("project_id")
+  project       Project?         @relation(fields: [projectId], references: [id])
+  assignedById  String           @map("assigned_by_id")
+  assignedBy    User             @relation("AssignmentCreator", fields: [assignedById], references: [id])
+  status        AssignmentStatus @default(PENDING)
+  dueDate       DateTime?        @map("due_date")
+  submission    FeedbackSubmission?
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+
+  @@unique([reviewCycleId, formId, reviewerId, employeeId, projectId])
+  @@index([reviewerId])
+  @@index([employeeId])
+  @@index([reviewCycleId])
+  @@map("feedback_form_assignments")
+}
+
+model FeedbackSubmission {
+  id           String                 @id @default(uuid())
+  assignmentId String                 @unique @map("assignment_id")
+  assignment   FeedbackFormAssignment @relation(fields: [assignmentId], references: [id])
+  submittedAt  DateTime               @map("submitted_at")
+  responses    FeedbackResponse[]
+  createdAt    DateTime               @default(now()) @map("created_at")
+  updatedAt    DateTime               @updatedAt @map("updated_at")
+
+  @@map("feedback_submissions")
+}
+
+model FeedbackResponse {
+  id           String               @id @default(uuid())
+  submissionId String               @map("submission_id")
+  submission   FeedbackSubmission   @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  questionId   String               @map("question_id")
+  question     FeedbackFormQuestion @relation(fields: [questionId], references: [id])
+  ratingValue  Int?                 @map("rating_value")
+  textValue    String?              @map("text_value")
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+
+  @@unique([submissionId, questionId])
+  @@map("feedback_responses")
+}
+
+enum PromotionStatus {
+  READY_FOR_PROMOTION
+  NEAR_READY
+  NEEDS_DEVELOPMENT
+  NOT_ELIGIBLE_YET
+}
+
+model FeedbackSummary {
+  id                String          @id @default(uuid())
+  reviewCycleId     String          @map("review_cycle_id")
+  reviewCycle       ReviewCycle     @relation(fields: [reviewCycleId], references: [id])
+  employeeId        String          @map("employee_id")
+  employee          Employee        @relation(fields: [employeeId], references: [id])
+  generatedAt       DateTime        @map("generated_at")
+  summaryText       String          @map("summary_text")
+  keyStrengths      String          @map("key_strengths")
+  developmentAreas  String          @map("development_areas")
+  skillReadiness    Float           @map("skill_readiness")
+  feedbackReadiness Float           @map("feedback_readiness")
+  compositeScore    Float           @map("composite_score")
+  promotionStatus   PromotionStatus @map("promotion_status")
+  promotionNotes    String?         @map("promotion_notes")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  @@unique([reviewCycleId, employeeId])
+  @@index([employeeId])
+  @@map("feedback_summaries")
+}
