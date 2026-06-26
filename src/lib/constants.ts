@@ -36,6 +36,64 @@ export const APPROVAL_STATUSES = ["PENDING", "APPROVED", "REJECTED"] as const;
 
 export const USER_ROLES = ["ADMIN", "MANAGER", "EMPLOYEE"] as const;
 
+export const PROJECT_CATEGORY_LABELS: Record<string, string> = {
+  D_AND_D: "Discovery & Design",
+  TACTICAL_BUILD: "Tactical Build",
+  DATA_PLATFORM_BUILD: "Data Platform Build",
+  ENTERPRISE_BUILD: "Enterprise Build",
+  DATA_SCIENCE: "Data Science",
+  AI_PROJECT: "AI Project",
+  MS_PROJECT: "MS Project",
+  FULL_STACK: "Full Stack",
+  VALUE_CREATION: "Value Creation",
+  OTHER: "Other",
+};
+
+export const PIPELINE_STAGE_LABELS: Record<string, string> = {
+  LEAD: "Lead",
+  PROPOSAL: "Proposal",
+  SOW_PENDING: "SOW Pending",
+  SOW_SIGNED: "SOW Signed",
+  ACTIVE: "Active",
+  RAMP_DOWN: "Ramp Down",
+  CLOSED: "Closed",
+};
+
+export const BILLABILITY_LABELS: Record<string, string> = {
+  BILLABLE: "Billable",
+  PARTIALLY_BILLABLE: "Partially Billable",
+  UNBILLABLE: "Unbillable",
+  SHADOW: "Shadow",
+};
+
+// HubSpot deal stage → win probability
+export const DEAL_STAGE_PROBABILITY: Record<string, number> = {
+  "Lead": 0.1,
+  "Proposal": 0.3,
+  "SOW Pending": 0.6,
+  "SOW Signed": 1.0,
+  "Active": 1.0,
+};
+
+export const COMPETENCY_BEHAVIOURS = [
+  "Stakeholder Management",
+  "Advisory",
+  "Techno-Functional",
+  "Communication",
+  "Ambiguity Navigation",
+] as const;
+
+export type CompetencyBehaviour = (typeof COMPETENCY_BEHAVIOURS)[number];
+
+// Match score weights (must sum to 1.0)
+export const MATCH_WEIGHTS = {
+  skill: 0.35,
+  competency: 0.25,
+  availability: 0.20,
+  billability: 0.12,
+  evidence: 0.08,
+} as const;
+
 export const ROLE_PERMISSIONS = {
   ADMIN: [
     "manage:coe",

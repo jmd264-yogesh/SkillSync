@@ -2,6 +2,7 @@
 
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
+import { computeReadiness } from "@/server/services/readiness.service";
 import type { SkillApprovalStatus } from "@prisma/client";
 
 export interface TeamMemberSummary {
@@ -69,28 +70,9 @@ export async function getTeamReports(): Promise<TeamMemberSummary[]> {
   if (!manager) return [];
 
   return manager.reportees.map((emp) => {
-    const targetLevels = new Map<string, number>();
-
-    for (const cs of emp.coe?.coeSkills ?? []) {
-      targetLevels.set(cs.skillId, Math.max(targetLevels.get(cs.skillId) ?? 0, cs.targetCompetency));
-    }
-    for (const ds of emp.designation?.designationSkills ?? []) {
-      targetLevels.set(ds.skillId, Math.max(targetLevels.get(ds.skillId) ?? 0, ds.targetCompetency));
-    }
-
     const approved = emp.employeeSkills.filter((s) => s.status === "APPROVED");
     const pending = emp.employeeSkills.filter((s) => s.status === "PENDING");
-
-    const currentLevels = new Map<string, number>();
-    for (const es of approved) {
-      currentLevels.set(es.skillId, es.validatedLevel ?? 0);
-    }
-
-    const total = targetLevels.size;
-    let met = 0;
-    for (const [skillId, target] of targetLevels) {
-      if ((currentLevels.get(skillId) ?? 0) >= target) met++;
-    }
+    const r = computeReadiness(emp.coe?.coeSkills ?? [], emp.designation?.designationSkills ?? [], approved);
 
     return {
       id: emp.id,
@@ -100,9 +82,9 @@ export async function getTeamReports(): Promise<TeamMemberSummary[]> {
       designationName: emp.designation?.name ?? null,
       approvedCount: approved.length,
       pendingCount: pending.length,
-      totalTargetSkills: total,
-      readinessScore: total > 0 ? Math.round((met / total) * 100) : 0,
-      skillsMet: met,
+      totalTargetSkills: r.total,
+      readinessScore: r.percentage,
+      skillsMet: r.met,
     };
   });
 }
@@ -154,8 +136,11 @@ export async function getTeamMemberDetail(employeeId: string): Promise<TeamMembe
   });
   gaps.sort((a, b) => b.gap - a.gap);
 
-  const met = gaps.filter((g) => g.status === "met").length;
-  const total = gaps.length;
+  const r = computeReadiness(
+    employee.coe?.coeSkills ?? [],
+    employee.designation?.designationSkills ?? [],
+    approved,
+  );
 
   return {
     employee: {
@@ -177,8 +162,8 @@ export async function getTeamMemberDetail(employeeId: string): Promise<TeamMembe
       reviewedAt: s.reviewedAt,
     })),
     gaps,
-    readinessScore: total > 0 ? Math.round((met / total) * 100) : 0,
-    skillsMet: met,
-    totalTargetSkills: total,
+    readinessScore: r.percentage,
+    skillsMet: r.met,
+    totalTargetSkills: r.total,
   };
 }

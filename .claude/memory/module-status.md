@@ -1,13 +1,13 @@
 # Module Status — Skill Matrix Platform
 
-_Last updated: 2026-06-24_
+_Last updated: 2026-06-26_
 
 ---
 
 ## Summary
-- Total modules: 14
+- Total modules: 15 (Module 15 = Resourcing CoLab added 2026-06-26)
 - Complete: 5
-- In Progress: 8
+- In Progress: 9
 - Not Started: 1
 - P0 modules complete: 5/6 (83%)
 
@@ -220,18 +220,43 @@ _Last updated: 2026-06-24_
 ---
 
 ### Module 14: AI Features
-**Status:** Not Started | **Completion:** 0%
+**Status:** In Progress | **Completion:** 40%
 
-**Pending (all):**
-- `src/lib/ai.ts` — Anthropic client setup
-- `src/server/services/ai.service.ts` — AI service layer
-- `src/lib/ai-prompts/` — Prompt template functions
-- Gap analysis summary generation
-- Learning path AI recommendations
-- Skill report narrative generation
-- Talent match scoring
-- Designation readiness prediction
-- Rate limiting implementation
-- AI response caching
+**Implemented (as part of Resourcing CoLab):**
+- `src/lib/ai/client.ts` — Anthropic client singleton
+- `src/lib/ai/rationale.ts` — Match explanation narrative
+- `src/lib/ai/rootcause.ts` — Project health root-cause narrative
+- `src/lib/ai/narrative.ts` — Forecast executive early-warning
+- `src/lib/ai/confidence.ts` — Data coverage quality check
+- `src/lib/ai/copilot/tools.ts` + `agent.ts` — Agentic RM Copilot (tool-use loop)
+- Rate limiting: per-session guard in copilot action
+- Graceful degradation: all AI calls fall back to deterministic output on failure
 
-**Blockers:** Modules 7, 8, 9, 10 need to be further along before AI can add value to them.
+**Pending:**
+- Gap analysis summary generation (Module 7 integration)
+- Learning path AI recommendations (Module 8 integration)
+- Skill report narrative generation (Module 10 integration)
+- Designation readiness prediction (Module 9 integration)
+- Response caching (identical prompt dedup)
+
+---
+
+### Module 15: Resourcing CoLab
+**Status:** In Progress | **Completion:** 85%
+
+**Implemented:**
+- Schema: `Timesheet`, `Competency`, `PipelineRequest`, `WeeklyStatus`, `UtilisationSnapshot`, `ShadowFlag`, `IngestReport` models
+- ETL: `scripts/etl/ingest.ts` — ingests all 8 reference files + 3 derived steps
+- Services: `availability.service.ts`, `matching.service.ts`, `health.service.ts`, `forecast.service.ts`
+- Actions: `recommendation.ts`, `project-health.ts`, `forecast.ts`, `allocation-report.ts`, `copilot.ts`
+- Validations: `src/validations/resourcing.schema.ts`
+- UI: Match Engine, Health Radar, Capacity Simulator, Pipeline Outlook, Allocation Board, RM Copilot
+- Shared: `DecisionCard` component with score bars + confidence badge
+- Navigation: "Resourcing CoLab" sidebar group (ADMIN only)
+- TypeScript: 0 errors | Build: ✓ all 36 routes compile
+
+**Pending:**
+- `pnpm db:migrate` — blocked until DATABASE_URL is configured on the machine
+- `npm run etl` — run after migration to seed reference data
+- Browser testing of all 6 pages
+- PDF/Excel export from Allocation Board

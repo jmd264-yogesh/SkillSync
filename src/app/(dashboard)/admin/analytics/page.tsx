@@ -1,38 +1,7 @@
 import { db } from "@/lib/db";
 import { PageHeader } from "@/components/shared/page-header";
 import { AnalyticsClient } from "./analytics-client";
-
-type EmployeeWithReadinessData = {
-  coe: {
-    name: string;
-    coeSkills: { skillId: string; targetCompetency: number }[];
-  } | null;
-  designation: {
-    name: string;
-    designationSkills: { skillId: string; targetCompetency: number }[];
-  } | null;
-  employeeSkills: { skillId: string; validatedLevel: number | null }[];
-};
-
-function computeEmployeeReadiness(emp: EmployeeWithReadinessData): number {
-  const targetMap = new Map<string, number>();
-  for (const cs of emp.coe?.coeSkills ?? []) {
-    targetMap.set(cs.skillId, Math.max(targetMap.get(cs.skillId) ?? 0, cs.targetCompetency));
-  }
-  for (const ds of emp.designation?.designationSkills ?? []) {
-    targetMap.set(ds.skillId, Math.max(targetMap.get(ds.skillId) ?? 0, ds.targetCompetency));
-  }
-  if (targetMap.size === 0) return 0;
-  const currentMap = new Map<string, number>();
-  for (const es of emp.employeeSkills) {
-    currentMap.set(es.skillId, es.validatedLevel ?? 0);
-  }
-  let met = 0;
-  for (const [skillId, target] of targetMap) {
-    if ((currentMap.get(skillId) ?? 0) >= target) met++;
-  }
-  return Math.round((met / targetMap.size) * 100);
-}
+import { computeReadiness } from "@/server/services/readiness.service";
 
 export default async function AnalyticsPage() {
   const [
@@ -107,13 +76,14 @@ export default async function AnalyticsPage() {
   }));
 
   const readinessScores = allEmployeesWithProfiles
-    .map((emp) => ({ name: emp.name, coeId: emp.coeId, readiness: computeEmployeeReadiness(emp) }))
-    .filter((e) => {
-      const hasTargets =
-        (allEmployeesWithProfiles.find((x) => x.name === e.name)?.coe?.coeSkills.length ?? 0) > 0 ||
-        (allEmployeesWithProfiles.find((x) => x.name === e.name)?.designation?.designationSkills.length ?? 0) > 0;
-      return hasTargets;
-    });
+    .map((emp) => ({
+      name: emp.name,
+      coeId: emp.coeId,
+      coeSkills: emp.coe?.coeSkills ?? [],
+      designationSkills: emp.designation?.designationSkills ?? [],
+      readiness: computeReadiness(emp.coe?.coeSkills ?? [], emp.designation?.designationSkills ?? [], emp.employeeSkills).percentage,
+    }))
+    .filter((e) => e.coeSkills.length > 0 || e.designationSkills.length > 0);
 
   const orgReadiness =
     readinessScores.length > 0
@@ -131,7 +101,7 @@ export default async function AnalyticsPage() {
   const coeReadinessMap = new Map<string, number[]>();
   for (const emp of allEmployeesWithProfiles) {
     if (!emp.coe) continue;
-    const score = computeEmployeeReadiness(emp);
+    const score = computeReadiness(emp.coe.coeSkills, emp.designation?.designationSkills ?? [], emp.employeeSkills).percentage;
     const existing = coeReadinessMap.get(emp.coe.name) ?? [];
     existing.push(score);
     coeReadinessMap.set(emp.coe.name, existing);

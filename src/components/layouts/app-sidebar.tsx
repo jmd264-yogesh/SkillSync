@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Settings2, Award, Users, Link2,
   Search, BarChart3, ClipboardCheck, FileText, GraduationCap,
   ArrowUpRight, FileBarChart, Target, UserCheck, LayoutGrid,
-  MessageSquare,
+  MessageSquare, Zap, HeartPulse, TrendingUp, CalendarRange, Bot,
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
@@ -29,6 +29,15 @@ const adminNavItems: NavItem[] = [
   { title: "Talent Discovery",    href: "/admin/talent-discovery",    icon: Search },
   { title: "Resource Management", href: "/admin/resource-management", icon: LayoutGrid },
   { title: "Feedback & Promotion",href: "/admin/feedback/cycles",     icon: MessageSquare },
+];
+
+const resourcingNavItems: NavItem[] = [
+  { title: "Match Engine",     href: "/admin/resourcing/match",       icon: Zap },
+  { title: "Health Radar",     href: "/admin/resourcing/health",      icon: HeartPulse },
+  { title: "Simulator",        href: "/admin/resourcing/simulator",   icon: TrendingUp },
+  { title: "Pipeline Outlook", href: "/admin/resourcing/outlook",     icon: CalendarRange },
+  { title: "Allocations",      href: "/admin/resourcing/allocations", icon: LayoutGrid },
+  { title: "RM Copilot",       href: "/admin/copilot",                icon: Bot },
 ];
 
 const managerNavItems: NavItem[] = [
@@ -109,7 +118,10 @@ export function AppSidebar({ role }: AppSidebarProps) {
 
       <SidebarContent className="pt-3">
         {role === "ADMIN" && (
-          <NavSection label="Administration" items={adminNavItems} pathname={pathname} />
+          <>
+            <NavSection label="Administration" items={adminNavItems} pathname={pathname} />
+            <NavSection label="Resourcing CoLab" items={resourcingNavItems} pathname={pathname} />
+          </>
         )}
         {role === "MANAGER" && (
           <NavSection label="Team Management" items={managerNavItems} pathname={pathname} />

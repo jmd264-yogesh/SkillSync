@@ -2,6 +2,7 @@
 
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
+import { computeReadiness } from "@/server/services/readiness.service";
 
 interface GapItem {
   skillId: string;
@@ -102,15 +103,15 @@ export async function getMyGapAnalysis(): Promise<GapAnalysisResult | null> {
 
   items.sort((a, b) => b.gap - a.gap);
 
-  const met = items.filter((i) => i.status === "met").length;
-  const partial = items.filter((i) => i.status === "partial").length;
-  const missing = items.filter((i) => i.status === "missing").length;
-  const total = items.length;
-  const percentage = total > 0 ? Math.round((met / total) * 100) : 0;
+  const readiness = computeReadiness(
+    employee.coe?.coeSkills ?? [],
+    employee.designation?.designationSkills ?? [],
+    employee.employeeSkills,
+  );
 
   return {
     items,
-    readiness: { met, partial, missing, total, percentage },
+    readiness,
     employeeName: employee.name,
     coeName: employee.coe?.name ?? null,
     designationName: employee.designation?.name ?? null,

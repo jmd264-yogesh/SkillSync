@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { UnauthorizedError, ForbiddenError, NotFoundError, ValidationError } from "@/lib/errors";
 import { submitFeedbackSchema, generateSummarySchema } from "@/validations/feedback.schema";
+import { computeReadiness } from "@/server/services/readiness.service";
 import type { Prisma } from "@prisma/client";
 
 export async function submitFeedback(data: unknown) {
@@ -156,22 +157,21 @@ export async function generateFeedbackSummary(data: unknown) {
     ? Math.round((allRatings.reduce((sum, v) => sum + v, 0) / allRatings.length / 5) * 100)
     : 0;
 
-  // Compute skill readiness from gap analysis
   const employee = await db.employee.findUnique({
     where: { id: employeeId },
     include: {
+      coe: { include: { coeSkills: true } },
       designation: { include: { designationSkills: true } },
       employeeSkills: { where: { status: "APPROVED" } },
     },
   });
   if (!employee) throw new NotFoundError("Employee");
 
-  const requiredSkills = employee.designation?.designationSkills ?? [];
-  const approvedSkills = new Map(employee.employeeSkills.map((s) => [s.skillId, s.validatedLevel ?? 0]));
-  const metSkills = requiredSkills.filter((rs) => (approvedSkills.get(rs.skillId) ?? 0) >= rs.targetCompetency);
-  const skillReadiness = requiredSkills.length > 0
-    ? Math.round((metSkills.length / requiredSkills.length) * 100)
-    : 0;
+  const { percentage: skillReadiness } = computeReadiness(
+    employee.coe?.coeSkills ?? [],
+    employee.designation?.designationSkills ?? [],
+    employee.employeeSkills,
+  );
 
   // Composite score (50/50 weighting)
   const compositeScore = Math.round((skillReadiness + feedbackReadiness) / 2);

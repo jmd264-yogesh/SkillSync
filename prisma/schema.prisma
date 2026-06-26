@@ -73,11 +73,20 @@ model CompetencyLevel {
 // ─── Employee ────────────────────────────────────────────────
 
 model Employee {
-  id              String          @id @default(uuid())
-  employeeCode    String          @unique @map("employee_code")
-  name            String
-  email           String          @unique
-  user            User?
+  id                String          @id @default(uuid())
+  employeeCode      String          @unique @map("employee_code")
+  name              String
+  email             String          @unique
+  weeklyCapacity    Float           @default(40) @map("weekly_capacity")
+  availableFrom     DateTime?       @map("available_from")
+  costRate          Float?          @map("cost_rate")
+  externalId        String?         @unique @map("external_id")
+  jobName           String?         @map("job_name")
+  department        String?
+  location          String?
+  dateOfJoin        DateTime?       @map("date_of_join")
+  dateOfResignation DateTime?       @map("date_of_resignation")
+  user              User?
   coe             Coe?            @relation(fields: [coeId], references: [id])
   coeId           String?         @map("coe_id")
   designation     Designation?    @relation(fields: [designationId], references: [id])
@@ -88,6 +97,11 @@ model Employee {
   employeeSkills  EmployeeSkill[]
   evidences       Evidence[]
   allocations          ProjectAllocation[]
+  timesheets           Timesheet[]
+  competencies         Competency[]
+  utilisationSnapshots UtilisationSnapshot[]
+  shadowFlags          ShadowFlag[]             @relation("ShadowEmployee")
+  leaves               Leave[]
   managedProjects      Project[]                @relation("ProjectManager")
   reviewerAssignments  FeedbackFormAssignment[] @relation("AssignmentReviewer")
   revieweeAssignments  FeedbackFormAssignment[] @relation("AssignmentEmployee")
@@ -266,6 +280,36 @@ enum RequirementPriority {
   LOW
 }
 
+enum ProjectCategory {
+  D_AND_D
+  TACTICAL_BUILD
+  DATA_PLATFORM_BUILD
+  ENTERPRISE_BUILD
+  DATA_SCIENCE
+  AI_PROJECT
+  MS_PROJECT
+  FULL_STACK
+  VALUE_CREATION
+  OTHER
+}
+
+enum PipelineStage {
+  LEAD
+  PROPOSAL
+  SOW_PENDING
+  SOW_SIGNED
+  ACTIVE
+  RAMP_DOWN
+  CLOSED
+}
+
+enum Billability {
+  BILLABLE
+  PARTIALLY_BILLABLE
+  UNBILLABLE
+  SHADOW
+}
+
 model Project {
   id                String                    @id @default(uuid())
   name              String
@@ -275,10 +319,27 @@ model Project {
   endDate           DateTime?                 @map("end_date")
   teamSize          Int?                      @map("team_size")
   status               ProjectStatus             @default(ACTIVE)
+  category             ProjectCategory           @default(TACTICAL_BUILD) @map("category")
+  pipelineStage        PipelineStage             @default(ACTIVE) @map("pipeline_stage")
+  sowSigned            Boolean                   @default(false) @map("sow_signed")
+  sowSignedDate        DateTime?                 @map("sow_signed_date")
+  plannedEndDate       DateTime?                 @map("planned_end_date")
+  expectedStart        DateTime?                 @map("expected_start")
+  winProbability       Int?                      @map("win_probability")
+  clientPriority       Int?                      @map("client_priority")
+  fundType             String?                   @map("fund_type")
+  billRate             Float?                    @map("bill_rate")
+  techCoe              String?                   @map("tech_coe")
+  propositionCoe       String?                   @map("proposition_coe")
+  clientId             String?                   @map("client_id")
+  actualEndDate        DateTime?                 @map("actual_end_date")
+  externalId           String?                   @unique @map("external_id")
   projectManagerId     String?                   @map("project_manager_id")
   projectManager       Employee?                 @relation("ProjectManager", fields: [projectManagerId], references: [id])
   skillRequirements    ProjectSkillRequirement[]
   allocations          ProjectAllocation[]
+  timesheets           Timesheet[]
+  weeklyStatuses       WeeklyStatus[]
   feedbackAssignments  FeedbackFormAssignment[]
   createdAt            DateTime                  @default(now()) @map("created_at")
   updatedAt            DateTime                  @updatedAt @map("updated_at")
@@ -303,20 +364,50 @@ model ProjectSkillRequirement {
 }
 
 model ProjectAllocation {
-  id         String    @id @default(uuid())
-  project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId  String    @map("project_id")
-  employee   Employee  @relation(fields: [employeeId], references: [id])
-  employeeId String    @map("employee_id")
-  allocation Float
-  role       String?
-  startDate  DateTime? @map("start_date")
-  endDate    DateTime? @map("end_date")
-  createdAt  DateTime  @default(now()) @map("created_at")
-  updatedAt  DateTime  @updatedAt @map("updated_at")
+  id           String      @id @default(uuid())
+  project      Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId    String      @map("project_id")
+  employee     Employee    @relation(fields: [employeeId], references: [id])
+  employeeId   String      @map("employee_id")
+  allocation        Float
+  role              String?
+  billability       Billability @default(BILLABLE) @map("billability")
+  resourcingStatus  String?     @map("resourcing_status")
+  externalId        String?     @unique @map("external_id")
+  startDate         DateTime?   @map("start_date")
+  endDate           DateTime?   @map("end_date")
+  plannedEndDate    DateTime?   @map("planned_end_date")
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
 
   @@unique([projectId, employeeId])
   @@map("project_allocations")
+}
+
+model RoleMixTemplate {
+  id            String          @id @default(uuid())
+  category      ProjectCategory
+  role          String
+  designationId String?         @map("designation_id")
+  fte           Float
+  source        String          @default("DERIVED") @map("source")
+  createdAt     DateTime        @default(now()) @map("created_at")
+
+  @@unique([category, role])
+  @@map("role_mix_templates")
+}
+
+model Leave {
+  id         String   @id @default(uuid())
+  employeeId String   @map("employee_id")
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  startDate  DateTime @map("start_date")
+  endDate    DateTime @map("end_date")
+  type       String   @default("UNPLANNED") @map("type")
+  source     String   @default("MANUAL") @map("source")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("leaves")
 }
 
 // ─── Feedback & Promotion Readiness ──────────────────────────
@@ -491,4 +582,139 @@ model FeedbackSummary {
   @@unique([reviewCycleId, employeeId])
   @@index([employeeId])
   @@map("feedback_summaries")
+}
+
+// ─── Resourcing CoLab: New Models ────────────────────────────
+
+// Timesheet (file 04) — the truth source for utilisation & billability
+model Timesheet {
+  id          String    @id @default(uuid())
+  employee    Employee  @relation(fields: [employeeId], references: [id])
+  employeeId  String    @map("employee_id")
+  project     Project?  @relation(fields: [projectId], references: [id])
+  projectId   String?   @map("project_id")
+  isBillable  Boolean   @default(false) @map("is_billable")
+  hours       Float     @default(0)
+  date        DateTime
+  status      String?
+  externalKey String?   @unique @map("external_key")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([employeeId, date])
+  @@index([projectId, date])
+  @@map("timesheets")
+}
+
+// Competency (file 06 wide→long) — 5 consulting behaviour scores per employee
+model Competency {
+  id         String   @id @default(uuid())
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  employeeId String   @map("employee_id")
+  behaviour  String
+  score      Int
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@unique([employeeId, behaviour])
+  @@index([employeeId])
+  @@map("competencies")
+}
+
+// PipelineRequest (file 07) — demand-side pipeline, pre-project
+model PipelineRequest {
+  id                String    @id @default(uuid())
+  cluster           Int?
+  client            String?
+  requestType       String?   @map("request_type")
+  clientPriority    String?   @map("client_priority")
+  likelyStart       DateTime? @map("likely_start")
+  numberOfWeeks     Float?    @map("number_of_weeks")
+  dealStage         String?   @map("deal_stage")
+  solution          String?
+  resourcesRequested String?  @map("resources_requested")
+  resourceRecommended Float?  @map("resource_recommended")
+  percentAvailable  Float?    @map("percent_available")
+  skillset          String?
+  skillsetMatch     String?   @map("skillset_match")
+  sowSigned         Boolean   @default(false) @map("sow_signed")
+  status            String?
+  comments          String?
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  @@index([cluster])
+  @@index([sowSigned])
+  @@map("pipeline_requests")
+}
+
+// WeeklyStatus (file 09) — per-project RAG signals
+model WeeklyStatus {
+  id             String   @id @default(uuid())
+  project        Project  @relation(fields: [projectId], references: [id])
+  projectId      String   @map("project_id")
+  weekStart      DateTime @map("week_start")
+  weekEnd        DateTime @map("week_end")
+  scopeStatus    String?  @map("scope_status")
+  scheduleStatus String?  @map("schedule_status")
+  qualityStatus  String?  @map("quality_status")
+  csatStatus     String?  @map("csat_status")
+  teamStatus     String?  @map("team_status")
+  externalKey    String?  @unique @map("external_key")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([projectId, weekStart])
+  @@map("weekly_statuses")
+}
+
+// UtilisationSnapshot — derived weekly from timesheets per employee
+model UtilisationSnapshot {
+  id              String   @id @default(uuid())
+  employee        Employee @relation(fields: [employeeId], references: [id])
+  employeeId      String   @map("employee_id")
+  weekStart       DateTime @map("week_start")
+  totalHours      Float    @default(0) @map("total_hours")
+  billableHours   Float    @default(0) @map("billable_hours")
+  utilisation     Float    @default(0)
+  billableUtil    Float    @default(0) @map("billable_util")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@unique([employeeId, weekStart])
+  @@index([employeeId])
+  @@map("utilisation_snapshots")
+}
+
+enum ShadowFlagType {
+  SHADOW
+  GHOST
+}
+
+// ShadowFlag — derived from allocations vs timesheet join
+model ShadowFlag {
+  id         String         @id @default(uuid())
+  employee   Employee       @relation("ShadowEmployee", fields: [employeeId], references: [id])
+  employeeId String         @map("employee_id")
+  projectId  String         @map("project_id")
+  flagType   ShadowFlagType @map("flag_type")
+  detectedAt DateTime       @map("detected_at")
+  hours      Float          @default(0)
+  createdAt  DateTime       @default(now()) @map("created_at")
+
+  @@index([projectId])
+  @@index([employeeId])
+  @@map("shadow_flags")
+}
+
+// IngestReport — one row per ETL run, tracks data quality
+model IngestReport {
+  id             String   @id @default(uuid())
+  runAt          DateTime @map("run_at")
+  fileName       String   @map("file_name")
+  rowsLoaded     Int      @default(0) @map("rows_loaded")
+  rowsDropped    Int      @default(0) @map("rows_dropped")
+  nullsCoerced   Int      @default(0) @map("nulls_coerced")
+  unmappedValues Int      @default(0) @map("unmapped_values")
+  notes          String?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@map("ingest_reports")
 }
