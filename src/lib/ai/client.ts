@@ -5,9 +5,9 @@ export const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY ?? "")
 
 export const MODELS = {
   // Complex reasoning: match rationale, copilot, forecasts
-  primary: "gemini-1.5-pro" as const,
+  primary: "gemini-3.1-flash-lite" as const,
   // Fast/cheap: confidence, simple classification
-  fast: "gemini-1.5-flash" as const,
+  fast: "gemini-3.1-flash-lite" as const,
 } as const;
 
 export const DEFAULT_TEMPERATURE = 0.2;
