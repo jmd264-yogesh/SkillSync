@@ -33,6 +33,10 @@ export function SimulatorClient() {
     setItems((prev) => [...prev, { category: "TACTICAL_BUILD", count: 1, start: new Date().toISOString().slice(0, 10), weeks: 8 }]);
   }
 
+  function removeRow(idx: number) {
+    setItems((prev) => prev.filter((_, i) => i !== idx));
+  }
+
   function updateItem(idx: number, field: keyof AdHocItem, value: string | number) {
     setItems((prev) => prev.map((item, i) => i === idx ? { ...item, [field]: value } : item));
   }
@@ -94,9 +98,22 @@ export function SimulatorClient() {
                 <Label className="text-xs">Start Date</Label>
                 <Input type="date" value={item.start} onChange={(e) => updateItem(idx, "start", e.target.value)} className="h-8 text-sm mt-1" />
               </div>
-              <div>
-                <Label className="text-xs">Weeks</Label>
-                <Input type="number" min={1} max={104} value={item.weeks} onChange={(e) => updateItem(idx, "weeks", parseInt(e.target.value) || 8)} className="h-8 text-sm mt-1" />
+              <div className="flex gap-2 items-end">
+                <div className="flex-1">
+                  <Label className="text-xs">Weeks</Label>
+                  <Input type="number" min={1} max={104} value={item.weeks} onChange={(e) => updateItem(idx, "weeks", parseInt(e.target.value) || 8)} className="h-8 text-sm mt-1" />
+                </div>
+                {items.length > 1 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 text-slate-400 hover:text-red-500"
+                    onClick={() => removeRow(idx)}
+                    type="button"
+                  >
+                    ×
+                  </Button>
+                )}
               </div>
             </div>
           ))}

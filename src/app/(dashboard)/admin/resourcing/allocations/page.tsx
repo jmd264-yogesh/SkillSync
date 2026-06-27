@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { getAllocationReport } from "@/server/actions/allocation-report";
 import { PageHeader } from "@/components/shared/page-header";
+import { DecisionCard } from "@/components/shared/decision-card";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -28,8 +29,64 @@ async function AllocationTable() {
   const bench = rows.filter((r) => r.status === "BENCH").length;
   const mismatch = rows.filter((r) => r.mismatch).length;
 
+  // P1 — Workforce decision line
+  const overPct = over / rows.length;
+  const decisionVariant = overPct > 0.4 ? "NO" : overPct > 0.2 || bench > rows.length * 0.3 ? "YES_WITH_CONDITIONS" : "YES";
+  const decisionHeadline = overPct > 0.4
+    ? `${over} employees over-allocated — immediate rebalancing required`
+    : over > 0
+    ? `${over} over-allocated, ${bench} on bench — review recommended`
+    : bench > rows.length * 0.3
+    ? `${bench} employees on bench — pipeline matching opportunity`
+    : "Workforce allocation within healthy range";
+  const decisionAction = over > 0
+    ? `Reassign ${over} over-allocated employee${over !== 1 ? "s" : ""} or reduce project load to free capacity`
+    : bench > 0
+    ? `Match ${bench} bench resource${bench !== 1 ? "s" : ""} to active pipeline requests via Match Engine`
+    : "No immediate action required — monitor weekly";
+
+  // P3 — Rolling-off strip: employees whose earliest allocation ends in next 14 days
+  const now = new Date();
+  const cutoff14 = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+  const rollingOff = rows.filter(
+    (r) => r.releasableFrom && r.releasableFrom >= now && r.releasableFrom <= cutoff14,
+  ).sort((a, b) => (a.releasableFrom?.getTime() ?? 0) - (b.releasableFrom?.getTime() ?? 0));
+
   return (
     <div className="space-y-4">
+      {/* P1 — Decision line */}
+      <DecisionCard
+        headline={decisionHeadline}
+        decisionVariant={decisionVariant}
+        action={decisionAction}
+        evidence={[
+          `${rows.length} employees tracked`,
+          `${over} over-allocated (>${Math.round(overPct * 100)}%)`,
+          `${bench} on bench`,
+          `${mismatch} data-drift (planned ≠ actual)`,
+        ]}
+      />
+
+      {/* P3 — Rolling-off strip */}
+      {rollingOff.length > 0 && (
+        <Card className="border-0 shadow-sm bg-blue-50/60">
+          <CardHeader className="px-5 py-2.5 border-b">
+            <CardTitle className="text-sm font-semibold text-blue-800">
+              Becoming available (next 14 days) — {rollingOff.length} employee{rollingOff.length !== 1 ? "s" : ""}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-5 py-3">
+            <div className="flex flex-wrap gap-2">
+              {rollingOff.map((r) => (
+                <Badge key={r.employeeId} variant="outline" className="bg-white text-blue-700 border-blue-200 text-xs">
+                  {r.employeeCode} · {r.jobName ?? "—"} · {r.releasableFrom?.toLocaleDateString()}
+                </Badge>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* KPI strip */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[

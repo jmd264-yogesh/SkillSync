@@ -33,6 +33,7 @@ export interface MonthlyGap {
 export interface PipelineOutlook {
   monthlyGaps: MonthlyGap[];
   firstShortfallMonth: string | null;
+  firstConfirmedShortfallMonth: string | null;
   confirmedCount: number;
   probableCount: number;
   attritionCount: number;
@@ -229,6 +230,7 @@ export async function getPipelineOutlook(params: {
   const monthlyGaps: MonthlyGap[] = [];
   const sortedMonths = Array.from(monthlyGapMap.keys()).sort();
   let firstShortfallMonth: string | null = null;
+  let firstConfirmedShortfallMonth: string | null = null;
 
   for (const month of sortedMonths) {
     const roleMap = monthlyGapMap.get(month)!;
@@ -237,6 +239,7 @@ export async function getPipelineOutlook(params: {
       const supplyFTE = baseSupply;
       const gap = supplyFTE - totalDemand;
       if (gap < 0 && !firstShortfallMonth) firstShortfallMonth = month;
+      if (supplyFTE < confirmed && !firstConfirmedShortfallMonth) firstConfirmedShortfallMonth = month;
       monthlyGaps.push({
         month, role,
         confirmedFTE: confirmed, probableFTE: probable,
@@ -250,5 +253,5 @@ export async function getPipelineOutlook(params: {
     ? Math.round(requests.filter((r) => r.likelyStart).length / requests.length * 100)
     : 0;
 
-  return { monthlyGaps, firstShortfallMonth, confirmedCount, probableCount, attritionCount, dataCoverage };
+  return { monthlyGaps, firstShortfallMonth, firstConfirmedShortfallMonth, confirmedCount, probableCount, attritionCount, dataCoverage };
 }
