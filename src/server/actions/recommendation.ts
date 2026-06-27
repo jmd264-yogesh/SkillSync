@@ -24,7 +24,7 @@ export async function recommendForPipelineRequest(
   const requiredSkills = await Promise.all(
     skillNames.map(async (name) => {
       const skill = await db.skill.findFirst({
-        where: { name: { contains: name, mode: "insensitive" } },
+        where: { name: { contains: name } },
       });
       return skill ? { skillId: skill.id, skillName: skill.name, requiredLevel: 3 } : null;
     }),

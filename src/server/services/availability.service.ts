@@ -96,7 +96,7 @@ export async function getAvailableFTE(params: {
 
   const employees = await db.employee.findMany({
     where: {
-      ...(role ? { jobName: { contains: role, mode: "insensitive" } } : {}),
+      ...(role ? { jobName: { contains: role } } : {}),
       ...(skillId && minSkillLevel ? {
         employeeSkills: {
           some: { skillId, status: "APPROVED", validatedLevel: { gte: minSkillLevel } },
