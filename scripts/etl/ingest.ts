@@ -30,7 +30,10 @@ function emptyStats(): IngestStats {
 function parseDate(raw: unknown): Date | null {
   if (!raw) return null;
   const d = new Date(String(raw));
-  return isNaN(d.getTime()) ? null : d;
+  if (isNaN(d.getTime())) return null;
+  // Reject Excel serial-number artifacts that parse to absurd years
+  if (d.getFullYear() < 1900 || d.getFullYear() > 2100) return null;
+  return d;
 }
 
 function parseFloat_(raw: unknown): number {
@@ -122,6 +125,11 @@ const PROJECT_CATEGORY_MAP: Record<string, string> = {
   "ms project": "MS_PROJECT",
   "full stack": "FULL_STACK",
   "value creation": "VALUE_CREATION",
+  "client project": "TACTICAL_BUILD",
+  "internal project": "VALUE_CREATION",
+  "managed services": "MS_PROJECT",
+  "bau activity": "VALUE_CREATION",
+  "sales activity": "VALUE_CREATION",
 };
 
 function mapCategory(raw: string): { category: string; unmapped: boolean } {
@@ -188,30 +196,52 @@ async function ingestAllocations(): Promise<IngestStats> {
   const rows = readCsv("03. 260623_Project_Allocation_Details.csv");
   const stats = emptyStats();
 
+  // Pre-aggregate: an employee may appear on the same project with multiple rows
+  // (different roles). Sum allocations; take earliest start / latest end.
+  type AggKey = string; // `${projectExtId}__${employeeExtId}`
+  const agg = new Map<AggKey, {
+    projectExtId: string;
+    employeeExtId: string;
+    allocation: number;
+    resourcingStatus: string | null;
+    startDate: Date | null;
+    endDate: Date | null;
+  }>();
+
   for (const row of rows) {
     if (String(row["is_active_version"]) !== "1") { stats.dropped++; continue; }
+    const isActive = String(row["is_allocation_active"]) === "1";
+    if (!isActive) { stats.dropped++; continue; }
 
-    const externalId = String(row["project_rolebased_user_id"] ?? "").trim();
     const projectExtId = String(row["project_id"] ?? "").trim();
     const employeeExtId = String(row["employee_id"] ?? "").trim();
-    if (!externalId || !projectExtId || !employeeExtId) { stats.dropped++; continue; }
+    if (!projectExtId || !employeeExtId) { stats.dropped++; continue; }
 
+    const key: AggKey = `${projectExtId}__${employeeExtId}`;
+    const alloc = parseFloat_(row["allocation_by_percentage"]);
+    const resourcingStatus = String(row["resourcing_status"] ?? "").trim() || null;
+    const startDate = parseDate(row["allocated_start_date"]);
+    const endDate = parseDate(row["allocated_end_date"]);
+
+    const existing = agg.get(key);
+    if (existing) {
+      existing.allocation = Math.min(existing.allocation + alloc, 100);
+      if (startDate && (!existing.startDate || startDate < existing.startDate)) existing.startDate = startDate;
+      if (endDate && (!existing.endDate || endDate > existing.endDate)) existing.endDate = endDate;
+    } else {
+      agg.set(key, { projectExtId, employeeExtId, allocation: alloc, resourcingStatus, startDate, endDate });
+    }
+  }
+
+  for (const { projectExtId, employeeExtId, allocation, resourcingStatus, startDate, endDate } of agg.values()) {
     const project = await db.project.findUnique({ where: { externalId: projectExtId } });
     const employee = await db.employee.findUnique({ where: { externalId: employeeExtId } });
     if (!project || !employee) { stats.dropped++; continue; }
 
-    const allocation = parseFloat_(row["allocation_by_percentage"]);
-    const resourcingStatus = String(row["resourcing_status"] ?? "").trim() || null;
-    const startDate = parseDate(row["allocated_start_date"]);
-    const endDate = parseDate(row["allocated_end_date"]);
-    const isActive = String(row["is_allocation_active"]) === "1";
-    if (!isActive) { stats.dropped++; continue; }
-
     await db.projectAllocation.upsert({
-      where: { externalId },
+      where: { projectId_employeeId: { projectId: project.id, employeeId: employee.id } },
       update: { allocation, resourcingStatus, startDate, endDate },
       create: {
-        externalId,
         projectId: project.id,
         employeeId: employee.id,
         allocation,
@@ -230,20 +260,39 @@ async function ingestTimesheets(): Promise<IngestStats> {
   const rows = readCsv("04. 260624 timesheet_details_2026.csv");
   const stats = emptyStats();
 
+  // Build lookup maps once (avoid N+1 per row on a 600k-row file)
+  const employeeMap = new Map<string, string>(); // externalId → internalId
+  const projectMap = new Map<string, string>();
+  (await db.employee.findMany({ select: { id: true, externalId: true } }))
+    .forEach((e) => { if (e.externalId) employeeMap.set(e.externalId, e.id); });
+  (await db.project.findMany({ select: { id: true, externalId: true } }))
+    .forEach((p) => { if (p.externalId) projectMap.set(p.externalId, p.id); });
+
+  // Truncate for idempotency (upsert-per-row on 600k rows would take hours in SQLite)
+  await db.timesheet.deleteMany({});
+
+  const BATCH = 500;
+  type TsRow = Parameters<typeof db.timesheet.createMany>[0]["data"] extends (infer T)[] ? T : never;
+  let batch: TsRow[] = [];
+
+  const flush = async () => {
+    if (batch.length === 0) return;
+    await db.timesheet.createMany({ data: batch });
+    stats.loaded += batch.length;
+    batch = [];
+  };
+
   for (const row of rows) {
     const externalKey = String(row["timesheet_surrogate_key"] ?? "").trim();
     const employeeExtId = String(row["employee_id"] ?? "").trim();
     const projectExtId = String(row["project_id"] ?? "").trim();
     if (!externalKey || !employeeExtId) { stats.dropped++; continue; }
 
-    const employee = await db.employee.findUnique({ where: { externalId: employeeExtId } });
-    if (!employee) { stats.dropped++; continue; }
+    const employeeId = employeeMap.get(employeeExtId);
+    if (!employeeId) { stats.dropped++; continue; }
 
-    const project = projectExtId
-      ? await db.project.findUnique({ where: { externalId: projectExtId } })
-      : null;
+    const projectId = projectExtId ? (projectMap.get(projectExtId) ?? null) : null;
 
-    // Coerce is_billable float (null/NaN → false, logged)
     let isBillable = false;
     if (row["is_billable"] === null || row["is_billable"] === undefined || row["is_billable"] === "") {
       stats.coerced++;
@@ -257,21 +306,10 @@ async function ingestTimesheets(): Promise<IngestStats> {
 
     const status = String(row["status"] ?? "").trim() || null;
 
-    await db.timesheet.upsert({
-      where: { externalKey },
-      update: { isBillable, hours, date, status, projectId: project?.id ?? null },
-      create: {
-        externalKey,
-        employeeId: employee.id,
-        projectId: project?.id ?? null,
-        isBillable,
-        hours,
-        date,
-        status,
-      },
-    });
-    stats.loaded++;
+    batch.push({ externalKey, employeeId, projectId, isBillable, hours, date, status });
+    if (batch.length >= BATCH) await flush();
   }
+  await flush();
   return stats;
 }
 
@@ -280,56 +318,109 @@ async function ingestSkillData(): Promise<IngestStats> {
   const rows = readXlsx("05. 260624 Skill_Data.xlsx");
   const stats = emptyStats();
 
+  // Build all lookup maps upfront — eliminates N+1 for every row
+  const employeeMap = new Map<string, { id: string; designationId: string | null; coeId: string | null }>();
+  (await db.employee.findMany({ select: { id: true, externalId: true, designationId: true, coeId: true } }))
+    .forEach((e) => { if (e.externalId) employeeMap.set(e.externalId, e); });
+
+  const designationMap = new Map<string, string>(); // name → id
+  (await db.designation.findMany({ select: { id: true, name: true } }))
+    .forEach((d) => designationMap.set(d.name, d.id));
+
+  const coeMap = new Map<string, string>(); // name → id
+  (await db.coe.findMany({ select: { id: true, name: true } }))
+    .forEach((c) => coeMap.set(c.name, c.id));
+
+  const skillMap = new Map<string, string>(); // name → id (populated as we go)
+  (await db.skill.findMany({ select: { id: true, name: true } }))
+    .forEach((s) => skillMap.set(s.name, s.id));
+
+  // First pass: collect all unique skill names that don't exist yet, bulk create them
+  const newSkillNames = new Set<string>();
+  for (const row of rows) {
+    const skillName = String(row["Skill"] ?? "").trim();
+    if (skillName && !skillMap.has(skillName)) newSkillNames.add(skillName);
+  }
+  if (newSkillNames.size > 0) {
+    await db.skill.createMany({
+      data: [...newSkillNames].map((name) => ({ name, category: "SKILL" as const })),
+    });
+    (await db.skill.findMany({ where: { name: { in: [...newSkillNames] } }, select: { id: true, name: true } }))
+      .forEach((s) => skillMap.set(s.name, s.id));
+  }
+
+  // Second pass: collect employee→designation/COE updates needed
+  const empDesignationUpdates = new Map<string, string>(); // empId → designationId
+  const empCoeUpdates = new Map<string, string>();
   for (const row of rows) {
     const employeeExtId = String(row["employee_id"] ?? "").trim();
-    if (!employeeExtId) { stats.dropped++; continue; }
-
-    const employee = await db.employee.findUnique({ where: { externalId: employeeExtId } });
-    if (!employee) { stats.dropped++; continue; }
-
-    // Update designation/COE from skill data if not set
-    const designationName = String(row["Designation"] ?? "").trim() || null;
-    const coeName = String(row["COE"] ?? "").trim() || null;
-
-    if (designationName && !employee.designationId) {
-      const designation = await db.designation.findFirst({ where: { name: designationName } });
-      if (designation) {
-        await db.employee.update({ where: { id: employee.id }, data: { designationId: designation.id } });
-      }
+    const emp = employeeMap.get(employeeExtId);
+    if (!emp) continue;
+    const designationName = String(row["Designation"] ?? "").trim();
+    const coeName = String(row["COE"] ?? "").trim();
+    if (designationName && !emp.designationId) {
+      const did = designationMap.get(designationName);
+      if (did) { empDesignationUpdates.set(emp.id, did); emp.designationId = did; }
     }
-    if (coeName && !employee.coeId) {
-      const coe = await db.coe.findFirst({ where: { name: coeName } });
-      if (coe) {
-        await db.employee.update({ where: { id: employee.id }, data: { coeId: coe.id } });
-      }
+    if (coeName && !emp.coeId) {
+      const cid = coeMap.get(coeName);
+      if (cid) { empCoeUpdates.set(emp.id, cid); emp.coeId = cid; }
     }
+  }
+  // Apply employee updates individually (no updateMany with per-row values in Prisma)
+  for (const [empId, designationId] of empDesignationUpdates)
+    await db.employee.update({ where: { id: empId }, data: { designationId } });
+  for (const [empId, coeId] of empCoeUpdates)
+    await db.employee.update({ where: { id: empId }, data: { coeId } });
+
+  // Third pass: split employeeSkill rows into creates vs updates
+  // Use a Map for pending creates so duplicate source rows (same employee+skill) are de-duped
+  const dbKeys = new Set(
+    (await db.employeeSkill.findMany({ select: { employeeId: true, skillId: true } }))
+      .map((es) => `${es.employeeId}__${es.skillId}`),
+  );
+
+  type EsCreate = Parameters<typeof db.employeeSkill.createMany>[0]["data"] extends (infer T)[] ? T : never;
+  const toCreate = new Map<string, EsCreate>(); // key → data (last row wins on dupe)
+
+  for (const row of rows) {
+    const employeeExtId = String(row["employee_id"] ?? "").trim();
+    const emp = employeeMap.get(employeeExtId);
+    if (!emp) { stats.dropped++; continue; }
 
     const skillName = String(row["Skill"] ?? "").trim();
     if (!skillName) { stats.dropped++; continue; }
-    const experience = String(row["Experience"] ?? "").trim() || null;
+    const skillId = skillMap.get(skillName);
+    if (!skillId) { stats.dropped++; continue; }
+
     const score = parseInt(String(row["Score"] ?? "0"), 10) || 0;
+    const key = `${emp.id}__${skillId}`;
 
-    // Upsert skill into the catalog
-    const skill = await db.skill.upsert({
-      where: { name: skillName },
-      update: {},
-      create: { name: skillName, category: "SKILL" },
-    });
-
-    // Upsert employee skill (approved if score > 0, pending otherwise)
-    await db.employeeSkill.upsert({
-      where: { employeeId_skillId: { employeeId: employee.id, skillId: skill.id } },
-      update: { validatedLevel: score, selfAssessedLevel: score, status: score > 0 ? "APPROVED" : "PENDING" },
-      create: {
-        employeeId: employee.id,
-        skillId: skill.id,
+    if (dbKeys.has(key)) {
+      // Already in DB — update
+      await db.employeeSkill.update({
+        where: { employeeId_skillId: { employeeId: emp.id, skillId } },
+        data: { validatedLevel: score, selfAssessedLevel: score, status: score > 0 ? "APPROVED" : "PENDING" },
+      });
+    } else {
+      // New record (or duplicate source row — Map de-dupes, last value wins)
+      toCreate.set(key, {
+        employeeId: emp.id,
+        skillId,
         selfAssessedLevel: score,
         validatedLevel: score > 0 ? score : null,
         status: score > 0 ? "APPROVED" : "PENDING",
-      },
-    });
+      });
+    }
     stats.loaded++;
   }
+
+  // Batch-create new employee skills in chunks of 500
+  const BATCH = 500;
+  const toCreateArr = [...toCreate.values()];
+  for (let i = 0; i < toCreateArr.length; i += BATCH)
+    await db.employeeSkill.createMany({ data: toCreateArr.slice(i, i + BATCH) });
+
   return stats;
 }
 
@@ -347,23 +438,42 @@ async function ingestCompetencies(): Promise<IngestStats> {
   const rows = readXlsx("06. 260623_Competency_Details.xlsx");
   const stats = emptyStats();
 
+  const employeeMap = new Map<string, string>();
+  (await db.employee.findMany({ select: { id: true, externalId: true } }))
+    .forEach((e) => { if (e.externalId) employeeMap.set(e.externalId, e.id); });
+
+  const existingKeys = new Set(
+    (await db.competency.findMany({ select: { employeeId: true, behaviour: true } }))
+      .map((c) => `${c.employeeId}__${c.behaviour}`),
+  );
+
+  type CompCreate = Parameters<typeof db.competency.createMany>[0]["data"] extends (infer T)[] ? T : never;
+  const toCreate: CompCreate[] = [];
+
   for (const row of rows) {
     const employeeExtId = String(row["Employee ID"] ?? "").trim();
-    if (!employeeExtId) { stats.dropped++; continue; }
-
-    const employee = await db.employee.findUnique({ where: { externalId: employeeExtId } });
-    if (!employee) { stats.dropped++; continue; }
+    const employeeId = employeeMap.get(employeeExtId);
+    if (!employeeId) { stats.dropped++; continue; }
 
     for (const { label, scoreKey } of BEHAVIOUR_COLS) {
       const score = parseInt(String(row[scoreKey] ?? "0"), 10) || 0;
-      await db.competency.upsert({
-        where: { employeeId_behaviour: { employeeId: employee.id, behaviour: label } },
-        update: { score },
-        create: { employeeId: employee.id, behaviour: label, score },
-      });
+      const key = `${employeeId}__${label}`;
+      if (existingKeys.has(key)) {
+        await db.competency.update({
+          where: { employeeId_behaviour: { employeeId, behaviour: label } },
+          data: { score },
+        });
+      } else {
+        toCreate.push({ employeeId, behaviour: label, score });
+        existingKeys.add(key);
+      }
       stats.loaded++;
     }
   }
+
+  if (toCreate.length > 0)
+    await db.competency.createMany({ data: toCreate });
+
   return stats;
 }
 
@@ -371,6 +481,9 @@ async function ingestCompetencies(): Promise<IngestStats> {
 async function ingestPipeline(): Promise<IngestStats> {
   const rows = readXlsx("07. 260624_Pipeline_Details.xlsx");
   const stats = emptyStats();
+
+  // No natural unique key — truncate before re-inserting for idempotency
+  await db.pipelineRequest.deleteMany({});
 
   for (const row of rows) {
     const cluster = row["Cluster"] != null ? parseInt(String(row["Cluster"]), 10) : null;
@@ -413,41 +526,50 @@ async function ingestWeeklyStatus(): Promise<IngestStats> {
   const rows = readCsv("09. 260624_Project_Weekly_Status_Details.csv");
   const stats = emptyStats();
 
+  const projectMap = new Map<string, string>();
+  (await db.project.findMany({ select: { id: true, externalId: true } }))
+    .forEach((p) => { if (p.externalId) projectMap.set(p.externalId, p.id); });
+
+  // Truncate for idempotency — externalKey is unique so re-running is safe
+  await db.weeklyStatus.deleteMany({});
+
+  type WsRow = Parameters<typeof db.weeklyStatus.createMany>[0]["data"] extends (infer T)[] ? T : never;
+  const BATCH = 500;
+  let batch: WsRow[] = [];
+
+  const flush = async () => {
+    if (batch.length === 0) return;
+    await db.weeklyStatus.createMany({ data: batch });
+    stats.loaded += batch.length;
+    batch = [];
+  };
+
   for (const row of rows) {
     const externalKey = String(row["wsr_key"] ?? "").trim();
     const projectExtId = String(row["project_id_masked"] ?? "").trim();
     if (!externalKey || !projectExtId) { stats.dropped++; continue; }
 
-    const project = await db.project.findUnique({ where: { externalId: projectExtId } });
-    if (!project) { stats.dropped++; continue; }
+    const projectId = projectMap.get(projectExtId);
+    if (!projectId) { stats.dropped++; continue; }
 
     const weekStart = parseDate(row["week_start_date"]);
     const weekEnd = parseDate(row["week_end_date"]);
     if (!weekStart || !weekEnd) { stats.dropped++; continue; }
 
-    await db.weeklyStatus.upsert({
-      where: { externalKey },
-      update: {
-        scopeStatus: String(row["scope_status"] ?? "").trim() || null,
-        scheduleStatus: String(row["schedule_status"] ?? "").trim() || null,
-        qualityStatus: String(row["quality_status"] ?? "").trim() || null,
-        csatStatus: String(row["csat_status"] ?? "").trim() || null,
-        teamStatus: String(row["team_status"] ?? "").trim() || null,
-      },
-      create: {
-        externalKey,
-        projectId: project.id,
-        weekStart,
-        weekEnd,
-        scopeStatus: String(row["scope_status"] ?? "").trim() || null,
-        scheduleStatus: String(row["schedule_status"] ?? "").trim() || null,
-        qualityStatus: String(row["quality_status"] ?? "").trim() || null,
-        csatStatus: String(row["csat_status"] ?? "").trim() || null,
-        teamStatus: String(row["team_status"] ?? "").trim() || null,
-      },
+    batch.push({
+      externalKey,
+      projectId,
+      weekStart,
+      weekEnd,
+      scopeStatus: String(row["scope_status"] ?? "").trim() || null,
+      scheduleStatus: String(row["schedule_status"] ?? "").trim() || null,
+      qualityStatus: String(row["quality_status"] ?? "").trim() || null,
+      csatStatus: String(row["csat_status"] ?? "").trim() || null,
+      teamStatus: String(row["team_status"] ?? "").trim() || null,
     });
-    stats.loaded++;
+    if (batch.length >= BATCH) await flush();
   }
+  await flush();
   return stats;
 }
 
@@ -607,7 +729,9 @@ async function deriveRoleMix(): Promise<IngestStats> {
 
 // ─── Orchestrator ─────────────────────────────────────────────
 async function run() {
-  console.log("=== Resourcing CoLab ETL ===\n");
+  // Optional: pass a step name to run only that step, e.g. `npx tsx ingest.ts 05_skill_data`
+  const only = process.argv[2] ?? null;
+  console.log(only ? `=== ETL — running only: ${only} ===\n` : "=== Resourcing CoLab ETL ===\n");
   const runAt = new Date();
 
   const steps: Array<{ name: string; fn: () => Promise<IngestStats> }> = [
@@ -625,6 +749,7 @@ async function run() {
   ];
 
   for (const step of steps) {
+    if (only && step.name !== only) continue;
     console.log(`▶ ${step.name}`);
     try {
       const stats = await step.fn();

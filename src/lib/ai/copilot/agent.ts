@@ -36,7 +36,7 @@ async function dispatchTool(name: string, input: Record<string, unknown>): Promi
       const skillNames = (req.skillset ?? "").split(/[,;/]/).map((s) => s.trim()).filter(Boolean);
       const requiredSkills = (await Promise.all(
         skillNames.map(async (n) => {
-          const skill = await db.skill.findFirst({ where: { name: { contains: n, mode: "insensitive" } } });
+          const skill = await db.skill.findFirst({ where: { name: { contains: n } } });
           return skill ? { skillId: skill.id, skillName: skill.name, requiredLevel: 3 } : null;
         }),
       )).filter((s): s is NonNullable<typeof s> => s !== null);
