@@ -4,9 +4,10 @@ export type UtilisationStatus = "OVER" | "FULL" | "UNDER" | "BENCH";
 
 export interface EmployeeAvailability {
   employeeId: string;
+  employeeCode: string;
   name: string;
   jobName: string | null;
-  plannedUtil: number;
+  activeProjectCount: number;
   actualUtil: number;
   billableUtil: number;
   status: UtilisationStatus;
@@ -24,7 +25,7 @@ function utilStatus(pct: number): UtilisationStatus {
 
 /**
  * Returns availability + utilisation for a set of employees.
- * plannedUtil = sum of active ProjectAllocation.allocation / 100
+ * activeProjectCount = count of active ProjectAllocation rows
  * actualUtil  = avg of last-4-weeks UtilisationSnapshot.utilisation
  * billableUtil = avg of last-4-weeks UtilisationSnapshot.billableUtil
  */
@@ -46,10 +47,9 @@ export async function getEmployeeAvailability(
   });
 
   return employees.map((emp) => {
-    // Planned utilisation from active allocations
-    const plannedUtil = emp.allocations.reduce((sum, a) => sum + a.allocation, 0) / 100;
+    const activeProjectCount = emp.allocations.length;
 
-    // Actual utilisation from last 4 weeks of timesheets
+    // Actual utilisation from last 4 weeks of utilisation snapshots
     const snapshots = emp.utilisationSnapshots;
     const actualUtil = snapshots.length > 0
       ? snapshots.reduce((s, sn) => s + sn.utilisation, 0) / snapshots.length
@@ -64,16 +64,18 @@ export async function getEmployeeAvailability(
       .filter((d): d is Date => d !== null);
     const releasableFrom: Date | null = endDates.length > 0 ? (endDates.sort((a, b) => a.getTime() - b.getTime())[0] ?? null) : null;
 
-    const mismatch = Math.abs(plannedUtil - actualUtil) > 0.2;
+    // Mismatch: no snapshot data vs active projects
+    const mismatch = activeProjectCount > 0 && snapshots.length === 0;
 
     return {
       employeeId: emp.id,
+      employeeCode: emp.employeeCode,
       name: emp.name,
       jobName: emp.jobName,
-      plannedUtil,
+      activeProjectCount,
       actualUtil,
       billableUtil,
-      status: utilStatus(actualUtil || plannedUtil),
+      status: utilStatus(actualUtil),
       availableFrom: emp.availableFrom,
       mismatch,
       releasableFrom,
@@ -83,7 +85,7 @@ export async function getEmployeeAvailability(
 
 /**
  * Returns available FTE for a role/skill within a date window.
- * "Available" = plannedUtil < 100% and no conflict with date window.
+ * "Available" = has no active allocations in the date window.
  */
 export async function getAvailableFTE(params: {
   role?: string;
@@ -119,8 +121,8 @@ export async function getAvailableFTE(params: {
 
   return employees
     .map((emp) => {
-      const usedPct = emp.allocations.reduce((sum, a) => sum + a.allocation, 0);
-      const freeCapacity = Math.max(0, 100 - usedPct) / 100;
+      // Treat 0 active allocations as fully available; any active allocation = reduce capacity
+      const freeCapacity = emp.allocations.length === 0 ? 1.0 : Math.max(0, 1 - emp.allocations.length * 0.15);
       return { employeeId: emp.id, name: emp.name, freeCapacity };
     })
     .filter((e) => e.freeCapacity > 0)

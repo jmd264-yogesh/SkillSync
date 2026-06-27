@@ -88,13 +88,16 @@ export async function computeMatchRanking(params: {
       : 50; // default when no competency data
 
     // ── Availability Fit ─────────────────────────────────────
-    const usedPct = emp.allocations.reduce((sum, a) => sum + a.allocation, 0);
-    const availableFTE = Math.max(0, (100 - usedPct) / 100);
+    // Use snapshot utilisation as the primary availability signal.
+    // Allocation sums are unreliable when employees appear on many historical projects.
+    const snapshots = emp.utilisationSnapshots;
+    const avgUtil = snapshots.length > 0
+      ? snapshots.reduce((s, sn) => s + sn.utilisation, 0) / snapshots.length
+      : (emp.allocations.length > 0 ? 1.0 : 0); // fallback: active projects → fully utilised
+    const availableFTE = Math.max(0, 1 - avgUtil);
     const availabilityFit = Math.round(Math.min(availableFTE, 1) * 100);
 
     // ── Billability Fit ──────────────────────────────────────
-    // Converting bench/unbillable to billable on this project = high fit
-    const snapshots = emp.utilisationSnapshots;
     const avgBillable = snapshots.length > 0
       ? snapshots.reduce((s, sn) => s + sn.billableUtil, 0) / snapshots.length
       : 1;

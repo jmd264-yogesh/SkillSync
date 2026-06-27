@@ -56,7 +56,7 @@ async function AllocationTable() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-slate-50/60">
-                {["Employee", "Role", "COE", "Planned %", "Actual %", "Billable %", "Status", "⚠"].map((h) => (
+                {["Employee Code", "Role", "COE", "Projects", "Actual %", "Billable %", "Status", "⚠"].map((h) => (
                   <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -66,20 +66,20 @@ async function AllocationTable() {
                 const style = STATUS_STYLES[row.status];
                 return (
                   <tr key={row.employeeId} className="border-b last:border-0 hover:bg-slate-50/40">
-                    <td className="px-4 py-2.5 font-medium text-slate-800">{row.name}</td>
-                    <td className="px-4 py-2.5 text-slate-600">{row.jobName ?? "—"}</td>
-                    <td className="px-4 py-2.5 text-slate-600">{row.coe ?? "—"}</td>
                     <td className="px-4 py-2.5">
-                      <span className={row.plannedUtil > 1 ? "text-red-600 font-semibold" : "text-slate-700"}>
-                        {Math.round(row.plannedUtil * 100)}%
-                      </span>
+                      <span className="font-medium text-slate-800 text-xs font-mono">{row.employeeCode}</span>
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-600 text-sm">{row.jobName ?? "—"}</td>
+                    <td className="px-4 py-2.5 text-slate-600 text-sm">{row.coe ?? "—"}</td>
+                    <td className="px-4 py-2.5">
+                      <span className="text-slate-700 text-sm">{row.activeProjectCount}</span>
                     </td>
                     <td className="px-4 py-2.5">
-                      <span className={row.actualUtil > 1 ? "text-red-600 font-semibold" : "text-slate-700"}>
+                      <span className={row.actualUtil > 1 ? "text-red-600 font-semibold text-sm" : "text-slate-700 text-sm"}>
                         {Math.round(row.actualUtil * 100)}%
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 text-slate-700">{Math.round(row.billableUtil * 100)}%</td>
+                    <td className="px-4 py-2.5 text-slate-700 text-sm">{Math.round(row.billableUtil * 100)}%</td>
                     <td className="px-4 py-2.5">
                       <Badge variant="outline" className={cn("text-xs", style.class)}>{style.label}</Badge>
                     </td>
