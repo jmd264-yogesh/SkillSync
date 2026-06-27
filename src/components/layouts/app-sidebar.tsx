@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Settings2, Award, Users, Link2,
   Search, BarChart3, ClipboardCheck, FileText, GraduationCap,
   ArrowUpRight, FileBarChart, Target, UserCheck, LayoutGrid,
-  MessageSquare, Zap, HeartPulse, TrendingUp, CalendarRange, Bot,
+  MessageSquare, Zap, HeartPulse, TrendingUp, CalendarRange, Bot, Briefcase,
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
@@ -49,11 +49,12 @@ const managerNavItems: NavItem[] = [
 ];
 
 const employeeNavItems: NavItem[] = [
-  { title: "My Skills",       href: "/employee/my-skills",       icon: Award },
-  { title: "Skill Gaps",      href: "/employee/skill-gaps",      icon: BarChart3 },
-  { title: "Learning Paths",  href: "/employee/learning-paths",  icon: GraduationCap },
-  { title: "Transition Path", href: "/employee/transition-path", icon: ArrowUpRight },
-  { title: "My Report",       href: "/employee/my-report",       icon: FileBarChart },
+  { title: "My Skills",          href: "/employee/my-skills",       icon: Award },
+  { title: "Skill Gaps",         href: "/employee/skill-gaps",      icon: BarChart3 },
+  { title: "Learning Paths",     href: "/employee/learning-paths",  icon: GraduationCap },
+  { title: "Transition Path",    href: "/employee/transition-path", icon: ArrowUpRight },
+  { title: "My Report",          href: "/employee/my-report",       icon: FileBarChart },
+  { title: "Project Experience", href: "/employee/my-experience",   icon: Briefcase },
 ];
 
 function NavSection({ label, items, pathname }: { label: string; items: NavItem[]; pathname: string }) {

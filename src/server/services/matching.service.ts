@@ -53,6 +53,10 @@ export async function computeMatchRanking(params: {
         include: { project: { select: { status: true } } },
       },
       utilisationSnapshots: { orderBy: { weekStart: "desc" }, take: 4 },
+      experienceDocs: {
+        where: { extractionStatus: { in: ["EXTRACTED", "APPLIED"] } },
+        select: { techStack: true, extractedSkills: true },
+      },
     },
   });
 
@@ -99,7 +103,17 @@ export async function computeMatchRanking(params: {
 
     // ── Evidence Strength ────────────────────────────────────
     const totalEvidence = emp.employeeSkills.reduce((s, es) => s + es.evidences.length, 0);
-    const evidenceStrength = Math.min(totalEvidence * 10, 100);
+    // Boost for project experience docs whose tech stack / extracted skills overlap with required skills
+    const reqNames = new Set(requiredSkills.map((r) => r.skillName.toLowerCase()));
+    let expBoost = 0;
+    for (const doc of emp.experienceDocs) {
+      const techTerms = (doc.techStack ?? "").split(/[,;]/).map((t) => t.trim().toLowerCase());
+      let docExtracted: { name: string }[] = [];
+      try { docExtracted = doc.extractedSkills ? (JSON.parse(doc.extractedSkills) as { name: string }[]) : []; } catch { /* ignore */ }
+      const docSkillNames = [...techTerms, ...docExtracted.map((s) => s.name.toLowerCase())];
+      if (docSkillNames.some((n) => reqNames.has(n))) expBoost += 15;
+    }
+    const evidenceStrength = Math.min(totalEvidence * 10 + expBoost, 100);
 
     // ── Weighted Match Score ─────────────────────────────────
     const matchScore = Math.round(
