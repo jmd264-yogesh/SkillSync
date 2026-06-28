@@ -1,6 +1,6 @@
 # Module Status — Skill Matrix Platform
 
-_Last updated: 2026-06-26_
+_Last updated: 2026-06-28_
 
 ---
 
@@ -220,15 +220,20 @@ _Last updated: 2026-06-26_
 ---
 
 ### Module 14: AI Features
-**Status:** In Progress | **Completion:** 40%
+**Status:** In Progress | **Completion:** 65%
 
-**Implemented (as part of Resourcing CoLab):**
-- `src/lib/ai/client.ts` — Anthropic client singleton
-- `src/lib/ai/rationale.ts` — Match explanation narrative
+**Implemented:**
+- `src/lib/ai/client.ts` — Gemini `genAI` singleton + MODELS constants
+- `src/lib/ai/rationale.ts` — `explainMatch()` for Excel + match UI
 - `src/lib/ai/rootcause.ts` — Project health root-cause narrative
 - `src/lib/ai/narrative.ts` — Forecast executive early-warning
-- `src/lib/ai/confidence.ts` — Data coverage quality check
-- `src/lib/ai/copilot/tools.ts` + `agent.ts` — Agentic RM Copilot (tool-use loop)
+- `src/lib/ai/confidence.ts` — Data coverage quality check (deterministic)
+- `src/lib/ai/copilot/tools.ts` + `agent.ts` — Agentic RM Copilot (7 tools, role-aware)
+- `src/lib/ai/agent/runtime.ts` — Generic `runAgent()` tool-use loop
+- `src/lib/ai/agent/plan-builder.ts` — `buildStaffingPlans()` multi-plan agentic builder
+- `src/lib/ai/agent/reallocation.ts` — Reallocation proposals
+- `src/lib/ai/agent/health-triage.ts` — Agentic health investigation
+- `src/lib/ai/agent/guardrails.ts` + `registry.ts` — Agent infrastructure
 - Rate limiting: per-session guard in copilot action
 - Graceful degradation: all AI calls fall back to deterministic output on failure
 
@@ -242,21 +247,25 @@ _Last updated: 2026-06-26_
 ---
 
 ### Module 15: Resourcing CoLab
-**Status:** In Progress | **Completion:** 85%
+**Status:** In Progress | **Completion:** 92%
 
 **Implemented:**
 - Schema: `Timesheet`, `Competency`, `PipelineRequest`, `WeeklyStatus`, `UtilisationSnapshot`, `ShadowFlag`, `IngestReport` models
 - ETL: `scripts/etl/ingest.ts` — ingests all 8 reference files + 3 derived steps
-- Services: `availability.service.ts`, `matching.service.ts`, `health.service.ts`, `forecast.service.ts`
-- Actions: `recommendation.ts`, `project-health.ts`, `forecast.ts`, `allocation-report.ts`, `copilot.ts`
+- Services: `availability.service.ts`, `matching.service.ts`, `health.service.ts`, `forecast.service.ts`, `excel-export.service.ts`
+- Actions: `recommendation.ts`, `project-health.ts`, `forecast.ts`, `allocation-report.ts`, `copilot.ts`, `export-resource-excel.ts`
 - Validations: `src/validations/resourcing.schema.ts`
-- UI: Match Engine, Health Radar, Capacity Simulator, Pipeline Outlook, Allocation Board, RM Copilot
-- Shared: `DecisionCard` component with score bars + confidence badge
+- UI: Match Engine, Health Radar, Capacity Simulator, Pipeline Outlook, Allocation Board, RM Copilot (all with filters)
+- Shared: `DecisionCard`, `AgentTrace`, `MarkdownMessage` components
 - Navigation: "Resourcing CoLab" sidebar group (ADMIN only)
-- TypeScript: 0 errors | Build: ✓ all 36 routes compile
+- Role-level matching: `src/lib/role-mapping.ts` — `normalizeResourceRequest()` + `employeeMatchesRole()` used application-wide
+- `employeeCode` as primary display identifier throughout (Excel, Match UI, Allocation Board, Alternates sheet)
+- Pool-depletion + availability-first assignment model in Excel export
+- CLI Excel export: `pnpm export:excel` → `out/07_Pipeline_Details_UPDATED.xlsx`
+- TypeScript: 0 errors (4 pre-existing ETL errors excluded)
 
 **Pending:**
 - `pnpm db:migrate` — blocked until DATABASE_URL is configured on the machine
 - `npm run etl` — run after migration to seed reference data
-- Browser testing of all 6 pages
-- PDF/Excel export from Allocation Board
+- Excel export button on Allocation Board UI (CLI works)
+- PDF export from Allocation Board

@@ -1,6 +1,6 @@
 # Codebase Current State — SkillSphere Platform
 
-_Generated: 2026-06-26 | Covers actual implemented code, not planned modules_
+_Generated: 2026-06-28 | Covers actual implemented code, not planned modules_
 
 ---
 
@@ -18,6 +18,8 @@ _Generated: 2026-06-26 | Covers actual implemented code, not planned modules_
 | Forms | React Hook Form 7 + Zod 4 |
 | State | Zustand 5 (minimal, UI-only) |
 | Animations | Framer Motion 12 |
+| AI | Google Gemini API via `@google/generative-ai` — `gemini-1.5-pro` / `gemini-1.5-flash` |
+| Excel Export | SheetJS (`xlsx` v0.18.5 CE) — cell styles, freeze rows, autofilter |
 | Testing | Vitest 4 + Playwright (scaffolded, no test files written) |
 | Password Hashing | bcryptjs (cost factor 12) |
 
@@ -35,58 +37,120 @@ src/
 │   │   │   ├── coe/               # COE management
 │   │   │   ├── competency-levels/ # Competency level management
 │   │   │   ├── config/            # Config hub page
+│   │   │   ├── copilot/           # RM Copilot chat page + copilot-chat.tsx
 │   │   │   ├── designations/      # Designation management
 │   │   │   ├── employee-mapping/  # Employee → COE/Designation/Manager assignment
 │   │   │   ├── feedback/
 │   │   │   │   └── cycles/        # Review cycle list
 │   │   │   │       └── [cycleId]/
-│   │   │   │           ├── page.tsx                    # Cycle detail + assignments
-│   │   │   │           ├── forms/page.tsx              # Form management for a cycle
-│   │   │   │           └── employee/[employeeId]/page.tsx  # Employee feedback view
-│   │   │   ├── resource-management/ # Projects + allocations
-│   │   │   ├── skill-mapping/     # COE/Designation → Skill mapping
-│   │   │   ├── skills/            # Skill catalog
-│   │   │   ├── talent-discovery/  # Employee search by skill
-│   │   │   └── users/             # User account management
+│   │   │   │           ├── page.tsx
+│   │   │   │           ├── forms/page.tsx
+│   │   │   │           └── employee/[employeeId]/page.tsx
+│   │   │   ├── resource-management/ # Legacy project + allocation management
+│   │   │   ├── resourcing/        # Resourcing CoLab (Module 15)
+│   │   │   │   ├── allocations/   # Allocation Board + rolling-off strip
+│   │   │   │   │   ├── page.tsx
+│   │   │   │   │   ├── alloc-table-client.tsx
+│   │   │   │   │   └── rolling-off-strip.tsx
+│   │   │   │   ├── health/        # Health Radar (RAG signals per project)
+│   │   │   │   │   ├── page.tsx
+│   │   │   │   │   └── health-client.tsx
+│   │   │   │   ├── match/         # Match Engine (skill × competency scoring)
+│   │   │   │   │   ├── page.tsx
+│   │   │   │   │   ├── match-client.tsx
+│   │   │   │   │   └── excel-download-button.tsx
+│   │   │   │   ├── outlook/       # Pipeline Outlook (6-month demand/supply)
+│   │   │   │   │   ├── page.tsx
+│   │   │   │   │   └── outlook-table-client.tsx
+│   │   │   │   └── simulator/     # Capacity Simulator
+│   │   │   │       ├── page.tsx
+│   │   │   │       └── simulator-client.tsx
+│   │   │   ├── skill-mapping/
+│   │   │   ├── skills/
+│   │   │   ├── talent-discovery/
+│   │   │   └── users/
 │   │   ├── manager/
-│   │   │   ├── approvals/         # Skill approval queue
+│   │   │   ├── approvals/
 │   │   │   ├── feedback/
-│   │   │   │   ├── page.tsx       # Manager feedback dashboard
-│   │   │   │   ├── assign/        # Assign feedback forms
-│   │   │   │   ├── forms/         # Manager's own feedback forms
-│   │   │   │   ├── team/          # Team assignment status
-│   │   │   │   └── submit/[assignmentId]/ # Submit feedback response
-│   │   │   ├── team-reports/      # Team skill readiness report
-│   │   │   └── team-skills/       # Team skills overview
+│   │   │   ├── team-reports/
+│   │   │   └── team-skills/
 │   │   └── employee/
-│   │       ├── learning-paths/    # Auto-generated learning recommendations
-│   │       ├── my-report/         # Full skill report (profile + gaps + certs)
-│   │       ├── my-skills/         # Skill submission + evidence
-│   │       ├── skill-gaps/        # Gap analysis vs COE/Designation targets
-│   │       └── transition-path/   # Gap analysis for next designation
-│   └── api/auth/[...nextauth]/    # NextAuth handler (only REST route)
+│   │       ├── learning-paths/
+│   │       ├── my-report/
+│   │       ├── my-skills/
+│   │       ├── skill-gaps/
+│   │       └── transition-path/
+│   └── api/auth/[...nextauth]/
 ├── server/
-│   ├── actions/                   # All mutations (20 files)
-│   └── services/                  # (currently empty — logic is inline in actions)
+│   ├── actions/                   # All mutations
+│   │   ├── allocation-report.ts   # getEmployeeAvailabilityReport()
+│   │   ├── approval.ts
+│   │   ├── coe.ts / competency-level.ts / designation.ts
+│   │   ├── copilot.ts             # runCopilotTurn() server action
+│   │   ├── employee.ts / employee-skill.ts
+│   │   ├── export-resource-excel.ts # downloadResourceExcel() → base64 xlsx
+│   │   ├── feedback-assignment.ts / feedback-form.ts / feedback-submission.ts
+│   │   ├── forecast.ts            # getForecastAction()
+│   │   ├── gap-analysis.ts / learning-paths.ts / my-skills.ts
+│   │   ├── project-health.ts      # getProjectHealthAction()
+│   │   ├── recommendation.ts      # recommendForPipelineRequest(), recommendAdHoc(), getPipelineRequests()
+│   │   ├── resource-management.ts
+│   │   ├── review-cycle.ts
+│   │   ├── skill.ts / skill-mapping.ts
+│   │   ├── talent-discovery.ts
+│   │   ├── team-reports.ts
+│   │   ├── transition-path.ts
+│   │   └── user.ts
+│   └── services/
+│       ├── availability.service.ts  # getEmployeeAvailability(), getAvailableFTE()
+│       ├── excel-export.service.ts  # buildResourceExcel() — SheetJS pipeline export
+│       ├── forecast.service.ts      # forecastNewProjects(), getPipelineOutlook()
+│       ├── health.service.ts        # getProjectHealth()
+│       └── matching.service.ts      # computeMatchRanking() — core scoring engine
 ├── components/
-│   ├── ui/                        # shadcn/ui primitives (16 components)
-│   ├── forms/                     # Form dialogs (9 components)
-│   ├── layouts/                   # app-sidebar.tsx, dashboard-header.tsx
-│   └── shared/                    # confirm-dialog, data-table, empty-state, page-header
+│   ├── ui/                          # shadcn/ui primitives (16 components)
+│   ├── forms/                       # Form dialogs (9 components)
+│   ├── layouts/                     # app-sidebar.tsx, dashboard-header.tsx
+│   └── shared/
+│       ├── agent-trace.tsx          # Collapsible AI tool-call trace panel
+│       ├── confirm-dialog.tsx
+│       ├── data-table.tsx
+│       ├── decision-card.tsx        # Score bars + confidence badge + decision variant
+│       ├── empty-state.tsx
+│       ├── markdown-message.tsx     # Renders AI markdown responses safely
+│       └── page-header.tsx
 ├── lib/
-│   ├── auth.ts                    # NextAuth config + session shape
-│   ├── constants.ts               # COMPETENCY_LEVELS, ROLE_PERMISSIONS, etc.
-│   ├── db.ts                      # Prisma client singleton
-│   ├── errors.ts                  # UnauthorizedError, ForbiddenError, NotFoundError, ValidationError
-│   └── utils.ts                   # cn() and general utilities
-├── hooks/use-mobile.ts
-├── middleware.ts                  # Route protection (unauthenticated → /login)
+│   ├── ai/
+│   │   ├── client.ts               # Gemini genAI singleton + MODELS constants
+│   │   ├── confidence.ts           # Data coverage quality check (deterministic)
+│   │   ├── narrative.ts            # Forecast executive early-warning narrative
+│   │   ├── rationale.ts            # explainMatch() — match rationale for Excel + UI
+│   │   ├── rootcause.ts            # Project health root-cause narrative
+│   │   ├── agent/
+│   │   │   ├── guardrails.ts       # GUARDRAIL_NOTE + AgentStep type
+│   │   │   ├── health-triage.ts    # Agentic health triage loop
+│   │   │   ├── plan-builder.ts     # buildStaffingPlans() — multi-plan agentic builder
+│   │   │   ├── reallocation.ts     # Reallocation candidate proposals
+│   │   │   ├── registry.ts         # Agent type registry
+│   │   │   └── runtime.ts          # runAgent() — generic tool-use loop
+│   │   └── copilot/
+│   │       ├── agent.ts            # runCopilotTurn() — tool dispatch + context management
+│   │       └── tools.ts            # COPILOT_TOOLS — 7 Gemini function declarations
+│   ├── auth.ts
+│   ├── constants.ts                # MATCH_WEIGHTS added: skill 0.35, comp 0.25, avail 0.20, bill 0.12, evidence 0.08
+│   ├── db.ts
+│   ├── errors.ts
+│   ├── role-mapping.ts             # normalizeResourceRequest() + employeeMatchesRole() — canonical role lookup
+│   └── utils.ts
+├── scripts/
+│   ├── etl/ingest.ts               # ETL: ingests 8 reference files into DB
+│   └── export-resource-excel.ts    # CLI: pnpm export:excel → out/07_Pipeline_Details_UPDATED.xlsx
+├── middleware.ts
 ├── types/index.ts
 └── validations/
-    ├── admin.schema.ts
-    ├── auth.schema.ts
-    ├── employee.schema.ts
-    ├── feedback.schema.ts         # All feedback/cycle Zod schemas
+    ├── admin.schema.ts / auth.schema.ts / employee.schema.ts
+    ├── feedback.schema.ts
+    ├── resourcing.schema.ts         # recommendForPipelineSchema, recommendAdHocSchema
     └── skill.schema.ts
 ```
 
@@ -109,41 +173,128 @@ src/
 ### People
 | Model | Key Fields |
 |-------|-----------|
-| `Employee` | id, employeeCode (unique), name, email, coeId, designationId, managerId (self-ref) |
+| `Employee` | id, employeeCode (unique business key), name, email, jobName, department, location, coeId, designationId, managerId (self-ref), dateOfJoin, dateOfResignation, externalId |
+
+**Note:** `employeeCode` is the primary display identifier for all user-facing output (e.g. "EMP042"). The UUID `id` is used internally for DB joins and React keys only.
 
 ### Skills
 | Model | Key Fields |
 |-------|-----------|
-| `Skill` | id, name (unique), description, category (SKILL/FRAMEWORK/CONCEPT/TOOL/CERTIFICATION) |
-| `CoeSkill` | coeId, skillId, targetCompetency — unique(coeId, skillId) |
-| `DesignationSkill` | designationId, skillId, targetCompetency — unique(designationId, skillId) |
-| `EmployeeSkill` | employeeId, skillId, selfAssessedLevel, validatedLevel, status (PENDING/APPROVED/REJECTED), reviewComment, reviewedBy, reviewedAt — unique(employeeId, skillId) |
-| `Evidence` | employeeSkillId, employeeId, type (CERTIFICATION/ASSESSMENT_SCORE/PROJECT_DOCUMENT/SUPPORTING_DOCUMENT), title, description, fileUrl, score, issuedAt, expiresAt |
+| `Skill` | id, name (unique), description, category |
+| `CoeSkill` | coeId + skillId, targetCompetency |
+| `DesignationSkill` | designationId + skillId, targetCompetency |
+| `EmployeeSkill` | employeeId + skillId, selfAssessedLevel, validatedLevel, status, reviewComment, reviewedBy, reviewedAt |
+| `Evidence` | employeeSkillId, type, title, description, fileUrl, score, issuedAt, expiresAt |
+| `ExperienceDoc` | employeeId, docUrl, extractionStatus, techStack, extractedSkills (JSON) |
+| `Competency` | employeeId, dimension (5 consulting behaviours), score (1–5) |
 
 ### Learning
 | Model | Key Fields |
 |-------|-----------|
-| `LearningPath` | id, title, description, skillId, fromLevel, toLevel |
-| `LearningItem` | learningPathId, title, type (INTERNAL_TRAINING/EXTERNAL_COURSE/CERTIFICATION/ASSESSMENT/PROJECT_BASED/DOCUMENTATION), url, duration, order |
+| `LearningPath` | id, title, skillId, fromLevel, toLevel |
+| `LearningItem` | learningPathId, title, type, url, duration, order |
 
-### Resource Management
+### Resource Management (Legacy + CoLab)
 | Model | Key Fields |
 |-------|-----------|
-| `Project` | id, name, description, domain, startDate, endDate, teamSize, status (PLANNING/ACTIVE/COMPLETED/ON_HOLD), projectManagerId |
-| `ProjectSkillRequirement` | projectId, skillId, requiredLevel, headcount, priority (CRITICAL/HIGH/MEDIUM/LOW) — unique(projectId, skillId) |
-| `ProjectAllocation` | projectId, employeeId, allocation (Float %), role, startDate, endDate — unique(projectId, employeeId) |
+| `Project` | id, name, domain, startDate, endDate, status (PLANNING/ACTIVE/COMPLETED/ON_HOLD), category (ProjectCategory enum) |
+| `ProjectSkillRequirement` | projectId + skillId, requiredLevel, headcount, priority |
+| `ProjectAllocation` | projectId + employeeId, allocation %, role, startDate, endDate |
+| `Timesheet` | employeeId, projectId, weekStart, hoursLogged, billableHours |
+| `UtilisationSnapshot` | employeeId, weekStart, utilisation (0–1), billableUtil (0–1) |
+| `ShadowFlag` | employeeId, projectId, weekStart, shadowHours |
+| `WeeklyStatus` | projectId, weekStart, ragStatus (GREEN/AMBER/RED), notes |
+
+### Pipeline & Resourcing CoLab
+| Model | Key Fields |
+|-------|-----------|
+| `PipelineRequest` | id, client, requestType, solution, skillset, resourcesRequested, numberOfWeeks, likelyStart, sowSigned (bool), dealStage, cluster, priority, status, comments |
+| `IngestReport` | id, runAt, totalRows, successRows, errorRows, notes |
 
 ### Feedback & Promotion Readiness
 | Model | Key Fields |
 |-------|-----------|
 | `ReviewCycle` | id, name, startDate, endDate, status (DRAFT/ACTIVE/CLOSED/ARCHIVED), createdById |
-| `FeedbackForm` | id, title, description, formType (PM_FEEDBACK/CDM_ASSESSMENT/HR_FEEDBACK), reviewCycleId, createdById |
-| `FeedbackFormSection` | formId, title, description, order |
+| `FeedbackForm` | id, title, formType (PM_FEEDBACK/CDM_ASSESSMENT/HR_FEEDBACK), reviewCycleId |
+| `FeedbackFormSection` | formId, title, order |
 | `FeedbackFormQuestion` | sectionId, text, type (RATING/TEXT), required, order |
-| `FeedbackFormAssignment` | reviewCycleId, formId, reviewerId, employeeId, projectId (optional), assignedById, status (PENDING/IN_PROGRESS/SUBMITTED/OVERDUE), dueDate |
+| `FeedbackFormAssignment` | reviewCycleId + formId + reviewerId + employeeId, status, dueDate |
 | `FeedbackSubmission` | assignmentId (unique), submittedAt |
-| `FeedbackResponse` | submissionId, questionId, ratingValue (1–5), textValue |
-| `FeedbackSummary` | reviewCycleId + employeeId (unique), summaryText, keyStrengths, developmentAreas, skillReadiness, feedbackReadiness, compositeScore (0–100), promotionStatus (READY_FOR_PROMOTION/NEAR_READY/NEEDS_DEVELOPMENT/NOT_ELIGIBLE_YET) |
+| `FeedbackResponse` | submissionId + questionId, ratingValue (1–5), textValue |
+| `FeedbackSummary` | reviewCycleId + employeeId (unique), compositeScore, promotionStatus |
+
+---
+
+## Resourcing CoLab (Module 15)
+
+### Six Pages Under `/admin/resourcing/`
+
+#### Match Engine (`/resourcing/match`)
+- Select pipeline request → `recommendForPipelineRequest()` computes ranked candidates
+- Scoring: `matchScore = Skill×35% + Competency×25% + Availability×20% + Billability×12% + Evidence×8%`
+- Role filtering: `resourcesRequested` parsed by `normalizeResourceRequest()` → `canonicalRoles` → Prisma OR filter on `jobName`
+- Result card headline: `[EMP042] Name · JobTitle — Match: 87/100`
+- Skill breakdown accordion; signal filter (REDEPLOY / PARTIAL_HIRE / HIRE)
+- **Excel Download button** — triggers `downloadResourceExcel()` server action → browser Blob download
+
+#### Health Radar (`/resourcing/health`)
+- Per-project RAG signals: billability leakage %, shadow resource count, releasable FTE, ramp-down detection
+- `health-client.tsx` with COE + status filters
+
+#### Capacity Simulator (`/resourcing/simulator`)
+- Input: project type + count + start date + weeks
+- AI agentic: `buildStaffingPlans()` → 2–3 conflict-checked plans (Plan A: redeploy-heavy, Plan B: delivery-safe)
+- Tool loop: `get_demand` → `find_candidates` (role-filtered) → `check_health_impact` → `record_plan`
+
+#### Pipeline Outlook (`/resourcing/outlook`)
+- 6-month demand vs supply by cluster/month
+- `outlook-table-client.tsx` with cluster + month filters
+
+#### Allocation Board (`/resourcing/allocations`)
+- Employee utilisation table: employeeCode, jobName, COE, utilisation status (OVER/FULL/UNDER/BENCH)
+- Rolling-off strip: employees whose allocations end within 30 days
+- Filters: role, COE, status
+
+#### RM Copilot (`/admin/copilot`)
+- Chat interface with markdown rendering via `MarkdownMessage`
+- 7 tools: `recommend_resources`, `get_availability`, `plan_staffing`, `forecast_new_projects`, `get_pipeline_forecast`, `get_project_health`, `get_allocation_report`
+- All tools are role-aware: `recommend_resources` passes `canonicalRoles` from pipeline request or explicit `role` param
+- Agent trace panel (collapsible, shows tool calls and results)
+
+### Excel Export (`pnpm export:excel`)
+- Source: `reference_files/07. 260624_Pipeline_Details.xlsx` (sheet "Forecast")
+- Output: `out/07_Pipeline_Details_UPDATED.xlsx` (3 sheets: Pipeline Resource Plan, Alternates, Summary)
+- Fills columns 16–19: Resource Recommended, % Available, Skillset Match
+- Appends 10 columns: Employee ID (employeeCode), Match Score, Skill Score, Competency Score, Signal, Recommended Action, Unmet Skills, Plan, AI Rationale, Confidence
+- **Pool-depletion model**: global `Set<string>` of claimed employee IDs; each employee assigned at most once
+- **SOW-priority**: SOW-signed requests processed first
+- **Availability-first**: tier-sorted (Tier 3 >50% free > Tier 2 > Tier 1 > Tier 0); any Tier 3 beats all lower tiers regardless of match score
+- **Role matching**: `normalizeResourceRequest(resourcesRequested)` → `employeeMatchesRole(jobName, canonicalRoles)` per-employee filter
+- AI rationale: `explainMatch()` on up to 15 REDEPLOY rows (5s timeout, batches of 3, deterministic fallback)
+
+### Role Mapping (`src/lib/role-mapping.ts`)
+Single source of truth used by matching, recommendations, availability, plan-builder, copilot, and Excel export.
+```typescript
+normalizeResourceRequest("AP/P") → { canonicalRoles: ["Associate Partner", "Principal"], count: 1, isEM: false }
+normalizeResourceRequest("2 SC (EM)") → { canonicalRoles: ["Senior Consultant"], count: 2, isEM: true }
+employeeMatchesRole("Senior Consultant", ["Senior Consultant", "Principal"]) → true
+```
+
+### MatchResult Interface
+```typescript
+interface MatchResult {
+  employeeId: string;    // UUID — for React keys and DB joins
+  employeeCode: string;  // business key (e.g. "EMP042") — primary display identifier
+  name: string;
+  jobName: string | null;
+  skillScore, competencyScore, availabilityFit, billabilityFit, evidenceStrength: number;
+  matchScore: number;
+  skillBreakdown: SkillBreakdown[];
+  unmetSkills: string[];
+  availableFTE: number;
+  signal: "REDEPLOY" | "HIRE" | "PARTIAL_HIRE";
+}
+```
 
 ---
 
@@ -151,221 +302,119 @@ src/
 
 ### ADMIN
 
-#### Configuration Management (`/admin/config`, `/admin/coe`, `/admin/designations`, `/admin/competency-levels`)
-- Full CRUD for Centers of Excellence (COE), Designations (with hierarchy levels), and Competency Levels
-- Config hub page aggregates all three into one view
-
-#### Skill Catalog (`/admin/skills`)
-- CRUD for skills with 5 categories: SKILL, FRAMEWORK, CONCEPT, TOOL, CERTIFICATION
-- Filter by category
-
-#### Skill Mapping (`/admin/skill-mapping`)
-- Map skills to COEs with a target competency level (1–5)
-- Map skills to Designations with a target competency level
-- Dual-tab UI; remove mappings individually
-
-#### Employee Management (`/admin/employee-mapping`)
-- Create employee profiles (name, email, employeeCode)
-- Assign employee to COE, Designation, and manager hierarchy
-- Link employees to user accounts (via `/admin/users`)
-
-#### User & Permissions (`/admin/users`)
-- Create / update / delete user accounts
-- Assign roles (ADMIN, MANAGER, EMPLOYEE)
-- Link user to an employee profile
-- Guard: cannot delete the last admin, cannot delete own account
+#### Configuration Management, Skill Catalog, Skill Mapping, Employee Management, User & Permissions
+(unchanged — see previous sections)
 
 #### Talent Discovery (`/admin/talent-discovery`)
 - Search employees by: skill, minimum competency level, COE, designation
 - Displays employee's approved skills with levels
-- Shows manager name and COE/designation
-- `getSkillDemandProfile()`: computes project skill demand vs employee supply gap
 
 #### Resource Management (`/admin/resource-management`)
-- Full project CRUD (name, description, domain, dates, team size, status)
-- Add/remove skill requirements per project (skill + required level + headcount + priority)
-- Allocate employees to projects with % allocation
-- Over-allocation protection: prevents total allocation > 100% across active projects
-- Create new skills inline when adding project requirements
+- Full project CRUD with skill requirements and employee allocations
+- Over-allocation guard: blocks if `totalExisting + newAllocation > 100`
 
 #### Analytics Dashboard (`/admin/analytics`)
-- KPI cards: total employees, total skills mapped, total COEs, total designations
-- COE employee distribution (bar chart)
-- Designation employee distribution (bar chart)
-- Skill approval status breakdown (pending/approved/rejected)
-- Org-wide readiness score (average % of target skills met)
-- Readiness bands: low (<40%), medium (40–70%), high (>70%)
-- COE readiness comparison chart
-- Recent skill submissions activity feed
-- "Employees with no gaps" count
+- KPI cards, COE/Designation distribution charts, skill approval breakdown, readiness score
+
+#### Resourcing CoLab (`/admin/resourcing/`)
+See "Resourcing CoLab" section above.
 
 #### Feedback & Promotion (`/admin/feedback/cycles`)
-- Create and manage Review Cycles (name, start date, end date)
-- Lifecycle transitions: DRAFT → ACTIVE → CLOSED → ARCHIVED (enforced state machine)
-- Per-cycle: view all assignments and their statuses
-- Per-employee in a cycle: view all submitted feedback with full responses
-- Generate promotion readiness summary:
-  - Composite score = 50% skill readiness + 50% feedback readiness (avg rating score)
-  - Promotion status: READY_FOR_PROMOTION (≥85%), NEAR_READY (≥65%), NEEDS_DEVELOPMENT (≥40%), NOT_ELIGIBLE_YET (<40%)
-  - Persisted in `FeedbackSummary` (upsertable)
+- Review cycle lifecycle (DRAFT → ACTIVE → CLOSED → ARCHIVED)
+- Promotion readiness summary: 50% skill readiness + 50% feedback readiness composite
 
 ---
 
 ### MANAGER
-
-#### Skill Approvals (`/manager/approvals`)
-- View pending skill submissions for direct reportees
-- Filter by status (PENDING/APPROVED/REJECTED/ALL)
-- Approve skill: set validated level + optional comment
-- Reject skill: require rejection reason comment
-- Admin can see all employees' submissions (not scoped to team)
-
-#### Team Skills (`/manager/team-skills`)
-- Overview of all direct reportees and their skill statuses
-
-#### Team Reports (`/manager/team-reports`)
-- List view: each reportee's approved count, pending count, readiness score (% of target skills met)
-- Detail view per team member: full skill list, gap analysis, readiness score
-
-#### Feedback (`/manager/feedback`)
-- Dashboard: pending feedback assignments
-- Create PM_FEEDBACK forms (managers restricted to PM_FEEDBACK type only)
-- `getMyAssignments()`: fetch pending/in-progress feedback assignments where they are the reviewer
-- Submit feedback form (`/manager/feedback/submit/[assignmentId]`): fill out rating + text responses per question
-- Assign feedback forms to employees (`/manager/feedback/assign`): restricted to own reportees
-- View team assignment statuses (`/manager/feedback/team`)
-
----
+- Skill Approvals, Team Skills, Team Reports, Feedback (unchanged)
 
 ### EMPLOYEE
-
-#### My Skills (`/employee/my-skills`)
-- View all submitted skills grouped by status
-- Submit new skill: pick skill, set self-assessed level (1–5), optionally attach evidence
-- Evidence types: CERTIFICATION, ASSESSMENT_SCORE, PROJECT_DOCUMENT, SUPPORTING_DOCUMENT
-- Withdraw a pending skill submission (deletes evidence too, in a transaction)
-- See target skills from COE and Designation mappings
-
-#### Skill Gaps (`/employee/skill-gaps`)
-- Computed from approved employee skills vs COE + Designation target levels
-- For overlapping skills: takes the higher of COE/Designation target
-- Gap items: skillName, category, targetLevel, currentLevel, gap, status (met/partial/missing), source (COE/Designation/Both)
-- Readiness summary: % of target skills met, counts per status
-- Sorted by gap size (largest gaps first)
-
-#### Learning Paths (`/employee/learning-paths`)
-- Auto-generated step-by-step learning plans for each skill gap
-- Steps are generated procedurally per level increment (no manual DB content needed):
-  - Level 0→1: Foundations course (6–10 hrs)
-  - Level 1→2: Core concepts course + practice exercises
-  - Level 2→3: Advanced course + project
-  - Level 3→5: Expert contribution + certification
-  - Final step always: "Submit for Manager Validation"
-- Sorted by gap size (highest priority first)
-- Only shows paths for skills with a remaining gap > 0
-
-#### Transition Path (`/employee/transition-path`)
-- Employee selects a target designation (only higher-level designations shown)
-- Gap analysis vs that designation's required skills
-- Per-skill priority: Critical (gap ≥4), High (gap ≥3), Medium (gap ≥1), None (met)
-- Readiness score (% skills met), estimated timeline (months, computed from total gap points × 1.5–2.5)
-
-#### My Report (`/employee/my-report`)
-- Full comprehensive report page (Server Component, no client JS needed):
-  - Employee profile card (name, code, email, COE, designation, manager)
-  - KPI summary: approved count, avg validated level, pending count, certification count
-  - Readiness ring (SVG circular progress, color-coded: green ≥70%, amber ≥40%, red <40%)
-  - Skill readiness breakdown: met / in-progress / not-started counts + top 3 priority gaps
-  - Validated skill profile: full list with self/validated levels, status badge, evidence count, review comment
-  - Skill gap details: per-skill status with source indicator
-  - Certifications & assessments gallery
-  - Recommended next steps: top 3 gaps with actionable instructions
+- My Skills, Skill Gaps, Learning Paths, Transition Path, My Report (unchanged)
 
 ---
 
-## Server Actions Reference
+## Server Actions Reference (Resourcing CoLab additions)
 
-### `src/server/actions/user.ts`
-- `getUsers()` — all users with linked employee profile
-- `createUser(formData)` — validates unique email, bcrypt hash, optional employee link
-- `updateUser(id, formData)` — update name/email/role/password/employee link
-- `deleteUser(id)` — guards: can't delete self, can't delete last admin
+### `src/server/actions/recommendation.ts`
+- `recommendForPipelineRequest(pipelineRequestId)` — ADMIN/MANAGER; parses `resourcesRequested` via `normalizeResourceRequest`, passes `canonicalRoles` to `computeMatchRanking`
+- `recommendAdHoc(input)` — ad-hoc skill match
+- `getPipelineRequests()` — ADMIN; returns all pipeline requests ordered by SOW + start date
 
-### `src/server/actions/approval.ts`
-- `getPendingApprovals()` — scoped by manager's reportees (or all for admin)
-- `getAllApprovals(statusFilter?)` — with optional status filter
-- `approveSkill(formData)` — sets APPROVED + validatedLevel + optional comment
-- `rejectSkill(formData)` — sets REJECTED + required reviewComment
+### `src/server/actions/project-health.ts`
+- `getProjectHealthAction(projectIds?)` — ADMIN; returns per-project RAG signals
 
-### `src/server/actions/my-skills.ts`
-- `getMySkills()` — employee's own submissions with skill + evidences
-- `getMyTargetSkills()` — merged COE + Designation target skills map
-- `getAvailableSkills()` — all skills not yet submitted by employee
-- `submitSkill(formData)` — creates EmployeeSkill + optional Evidence in a transaction
-- `withdrawSkill(id)` — deletes evidence + skill in a transaction
+### `src/server/actions/forecast.ts`
+- `getForecastAction(params)` — ADMIN; 6-month demand/supply outlook
 
-### `src/server/actions/gap-analysis.ts`
-- `getMyGapAnalysis()` — full gap computation (COE + Designation targets vs approved skills)
+### `src/server/actions/allocation-report.ts`
+- `getEmployeeAvailabilityReport(filters?)` — ADMIN; utilisation status per employee
 
-### `src/server/actions/learning-paths.ts`
-- `getMyLearningPaths()` — procedurally generated step-by-step paths for each gap
+### `src/server/actions/copilot.ts`
+- `runCopilotTurn(history)` — ADMIN; agentic tool-use loop via Gemini
 
-### `src/server/actions/transition-path.ts`
-- `getDesignationsForTransition()` — higher-level designations than current
-- `getTransitionGap(targetDesignationId)` — full gap analysis + readiness + estimated months
+### `src/server/actions/export-resource-excel.ts`
+- `downloadResourceExcel()` — ADMIN; builds Excel buffer via `buildResourceExcel()`, returns `{data: base64, filename}`
 
-### `src/server/actions/team-reports.ts`
-- `getTeamReports()` — summary list for all reportees (readiness score per person)
-- `getTeamMemberDetail(employeeId)` — full skill + gap detail for one reportee
+---
 
-### `src/server/actions/resource-management.ts`
-- `getResourceDashboard()` — all projects + all employees with allocations
-- `createProject(formData)` / `updateProjectStatus(id, status)` / `deleteProject(id)`
-- `addSkillRequirement(projectId, formData)` / `removeSkillRequirement(requirementId)`
-- `allocateEmployee(formData)` — with over-allocation guard (sums active allocations)
-- `updateAllocation(id, allocation)` / `removeAllocation(id)`
-- `createSkillAndAddRequirement(...)` — upserts skill + adds to project
-- `getSkillsForSelect()` / `getEmployeesForSelect()`
+## Services Reference (Resourcing CoLab)
 
-### `src/server/actions/talent-discovery.ts`
-- `searchTalent(filters)` — filter by skillId + minLevel + coeId + designationId
-- `getTalentFilterOptions()` — all skills, COEs, designations for filter dropdowns
-- `getSkillDemandProfile()` — demand (projects) vs supply (employees) per skill
+### `src/server/services/matching.service.ts`
+- `computeMatchRanking({ requiredSkills, canonicalRoles?, windowStart?, windowEnd?, topN? })` → `MatchResult[]`
+- Role filtering: Prisma `OR` on `jobName contains` for each canonical role
+- Sorted by matchScore DESC
 
-### `src/server/actions/review-cycle.ts`
-- `getReviewCycles()` / `getReviewCycle(id)` / `createReviewCycle(data)` / `updateReviewCycle(id, data)`
-- `updateCycleStatus(id, status)` — enforces state machine transitions
-- `deleteReviewCycle(id)` — only DRAFT cycles deletable
-- `getCycleEmployeeStatus(cycleId)` — all assignments for a cycle
+### `src/server/services/availability.service.ts`
+- `getEmployeeAvailability(filters?)` → `EmployeeAvailability[]` — utilisation status, releasableFrom date
+- `getAvailableFTE({ role?, skillId?, minSkillLevel?, windowStart, windowEnd })` → free capacity array
+  - Role uses `normalizeResourceRequest()` → canonical OR filter; falls back to raw `contains` for unrecognised codes
 
-### `src/server/actions/feedback-form.ts`
-- `getFeedbackFormsForCycle(cycleId)` — admin sees all; manager sees own
-- `getFeedbackForm(id)` — with full sections + questions
-- `createFeedbackForm(data)` — creates form + sections + questions in nested create; managers restricted to PM_FEEDBACK
-- `deleteFeedbackForm(id)` — blocked if any assignments exist
+### `src/server/services/health.service.ts`
+- `getProjectHealth(projectIds?)` → per-project RAG signals, leakage, shadow count, releasable FTE
 
-### `src/server/actions/feedback-assignment.ts`
-- `getMyAssignments()` — reviewer's pending/in-progress assignments
-- `getAssignment(id)` — with full form, submission, responses
-- `getTeamAssignmentStatus(cycleId?)` — manager sees reportees' assignments
-- `createAssignment(data)` — validates PM_FEEDBACK → reviewer must be PM of project, employee must be allocated
-- `deleteAssignment(id)` — admin only, blocked if submitted
-- `getAssignmentContext(cycleId)` — all context data needed for the assignment UI
+### `src/server/services/forecast.service.ts`
+- `forecastNewProjects({ adHoc?, pipelineRequestIds? })` → demand/supply by role + reallocation candidates
+- `getPipelineOutlook({ months?, cluster? })` → 6-month pipeline matrix
 
-### `src/server/actions/feedback-submission.ts`
-- `submitFeedback(data)` — creates submission + responses in transaction; validates required questions, rating range (1–5)
-- `getEmployeeFeedback(employeeId, cycleId)` — scope-aware: managers see PM_FEEDBACK + CDM_ASSESSMENT only
-- `generateFeedbackSummary(data)` — computes skill readiness (from designation skills) + feedback readiness (avg rating/5), 50/50 composite, upserts FeedbackSummary
-- `getEmployeeSummary(employeeId, cycleId)` — returns existing summary
+### `src/server/services/excel-export.service.ts`
+- `buildResourceExcel(opts?)` → `Buffer` — full SheetJS pipeline export (see Excel Export section above)
 
-### Other actions
-- `coe.ts`: `getCoes`, `createCoe`, `updateCoe`, `deleteCoe`
-- `designation.ts`: `getDesignations`, `createDesignation`, `updateDesignation`, `deleteDesignation`
-- `competency-level.ts`: `getCompetencyLevels`, `createCompetencyLevel`, `updateCompetencyLevel`, `deleteCompetencyLevel`
-- `skill.ts`: `getSkills`, `createSkill`, `updateSkill`, `deleteSkill`
-- `skill-mapping.ts`: `getCoeSkillMappings`, `getDesignationSkillMappings`, `mapSkillToCoe`, `mapSkillToDesignation`, `removeSkillFromCoe`, `removeSkillFromDesignation`
-- `employee.ts`: `getEmployees`, `createEmployee`, `updateEmployee`, `deleteEmployee`
-- `employee-skill.ts`: approve/reject variants (overlaps with approval.ts)
+---
+
+## AI Layer
+
+### Client (`src/lib/ai/client.ts`)
+- `genAI` — GoogleGenerativeAI singleton using `GOOGLE_AI_API_KEY`
+- `MODELS = { primary: "gemini-1.5-pro", fast: "gemini-1.5-flash" }`
+
+### AI Utilities
+| File | Function | Purpose |
+|------|----------|---------|
+| `rationale.ts` | `explainMatch(params)` | 2–4 sentence match rationale for Excel + UI |
+| `rootcause.ts` | `explainHealthRootCause(params)` | 3-sentence project health diagnosis |
+| `narrative.ts` | `buildForecastNarrative(params)` | Executive early-warning for Pipeline Outlook |
+| `confidence.ts` | `checkDataCoverage(params)` | Deterministic data quality check (no AI call) |
+
+### Agentic Runtime (`src/lib/ai/agent/runtime.ts`)
+```typescript
+runAgent({ system, tools, dispatch, messages, maxRounds, model?, serializeOutput? })
+  → { finalText, trace: AgentStep[] }
+```
+Generic tool-use loop used by all agentic features. Each `AgentStep` records the tool name, input, output, and timestamp.
+
+### RM Copilot (`src/lib/ai/copilot/`)
+- `COPILOT_TOOLS` — 7 Gemini function declarations
+- `runCopilotTurn(history)` — trims history to last 4 turns, dispatches tools, compacts responses to prevent context explosion
+- `recommend_resources` tool: accepts `pipelineRequestId`, `requiredSkills[]`, and/or `role` string (raw code accepted — normalized via `normalizeResourceRequest`)
+
+### Agentic Agents (`src/lib/ai/agent/`)
+| File | Export | Purpose |
+|------|--------|---------|
+| `plan-builder.ts` | `buildStaffingPlans(input[])` | 2–3 distinct staffing plans with health conflict checking |
+| `reallocation.ts` | `proposeReallocations(params)` | Find redeployment candidates for a project |
+| `health-triage.ts` | `triageProjectHealth(params)` | Agentic health root-cause investigation |
+| `guardrails.ts` | `GUARDRAIL_NOTE` | System prompt guardrail text injected into all agents |
+| `registry.ts` | — | Agent type registry |
 
 ---
 
@@ -376,56 +425,37 @@ src/
 session.user = { id, email, name, role: UserRole, employeeId: string | null }
 ```
 
-### Middleware (`src/middleware.ts`)
-- Public routes: `/login`, `/register`
-- Authenticated → redirects public routes to `/employee/my-skills`
-- Unauthenticated → redirects all protected routes to `/login`
-- Does NOT enforce role-level routing (handled per-layout)
-
 ### RBAC Enforcement
 1. Middleware — unauthenticated guard
 2. Role layouts (`admin/layout.tsx`, `manager/layout.tsx`) — role guard
-3. Server actions — session check + role check + scope check inline
-4. No service layer abstraction (auth logic lives in action files directly)
+3. Server actions — `auth()` (not `getServerSession`) + role check + scope check
+4. All Resourcing CoLab actions require `ADMIN` role
 
-### Scope Rules Implemented
-- Employee: `employeeId` always from `session.user.employeeId`, never from request body
-- Manager: always verifies `managerId === session.user.employeeId` before accessing reportee data
-- Admin: no scope restriction, role check only
+### Scope Rules
+- Employee: `employeeId` always from `session.user.employeeId`
+- Manager: verifies `managerId === session.user.employeeId` before reportee access
+- Admin: no scope restriction; all resourcing data is admin-only
 
 ---
 
 ## UI Component Inventory
 
 ### shadcn/ui Primitives (`src/components/ui/`)
-Avatar, Badge, Button, Card, Dialog, Dropdown Menu, Input, Label, Progress, Select, Separator, Sheet, Sidebar, Skeleton, Sonner (toasts), Table, Tabs, Textarea, Tooltip
-
-### Form Dialogs (`src/components/forms/`)
-| Component | Purpose |
-|-----------|---------|
-| `coe-form-dialog.tsx` | Create/edit COE |
-| `competency-level-form-dialog.tsx` | Create/edit competency level |
-| `designation-form-dialog.tsx` | Create/edit designation |
-| `employee-form-dialog.tsx` | Create/edit employee |
-| `employee-skills-dialog.tsx` | Skill submission with evidence |
-| `feedback-form-builder-dialog.tsx` | Build feedback form with sections + questions |
-| `review-cycle-form-dialog.tsx` | Create/edit review cycle |
-| `skill-form-dialog.tsx` | Create/edit skill |
-| `user-form-dialog.tsx` | Create/edit user account |
+Avatar, Badge, Button, Card, Dialog, Dropdown Menu, Input, Label, Progress, Select, Separator, Sheet, Sidebar, Skeleton, Sonner, Table, Tabs, Textarea, Tooltip
 
 ### Shared Components (`src/components/shared/`)
 | Component | Purpose |
 |-----------|---------|
+| `agent-trace.tsx` | Collapsible accordion showing AI tool calls (name, input JSON, output preview) |
 | `confirm-dialog.tsx` | Reusable confirmation modal |
-| `data-table.tsx` | Sortable/filterable data table with pagination |
-| `empty-state.tsx` | Empty state with icon + message + optional CTA |
-| `page-header.tsx` | Standard page title + description + optional action slot |
+| `data-table.tsx` | Sortable/filterable table with pagination |
+| `decision-card.tsx` | Score bars (Skill, Competency, Availability) + YES/NO/YES_WITH_CONDITIONS badge + confidence badge |
+| `empty-state.tsx` | Icon + message + optional CTA |
+| `markdown-message.tsx` | Renders AI markdown responses (headers, bold, tables, lists) |
+| `page-header.tsx` | Page title + description + `children` slot for action buttons |
 
-### Layout Components (`src/components/layouts/`)
-| Component | Purpose |
-|-----------|---------|
-| `app-sidebar.tsx` | Role-aware collapsible sidebar navigation |
-| `dashboard-header.tsx` | Top bar with user info and sign-out |
+### Form Dialogs (`src/components/forms/`)
+coe, competency-level, designation, employee, employee-skills, feedback-form-builder, review-cycle, skill, user
 
 ---
 
@@ -440,15 +470,21 @@ Avatar, Badge, Button, Card, Dialog, Dropdown Menu, Input, Label, Progress, Sele
 - Talent Discovery → `/admin/talent-discovery`
 - Resource Management → `/admin/resource-management`
 - Feedback & Promotion → `/admin/feedback/cycles`
+- **Resourcing CoLab** (group):
+  - Match Engine → `/admin/resourcing/match`
+  - Health Radar → `/admin/resourcing/health`
+  - Capacity Simulator → `/admin/resourcing/simulator`
+  - Pipeline Outlook → `/admin/resourcing/outlook`
+  - Allocation Board → `/admin/resourcing/allocations`
+  - RM Copilot → `/admin/copilot`
 
 ### Manager Sidebar
 - Team Skills → `/manager/team-skills`
 - Approvals → `/manager/approvals`
 - Team Reports → `/manager/team-reports`
-- Team Learning → `/manager/team-learning` *(link exists, page not implemented)*
 - Feedback → `/manager/feedback`
 
-### Employee Sidebar (shown to all authenticated users)
+### Employee Sidebar
 - My Skills → `/employee/my-skills`
 - Skill Gaps → `/employee/skill-gaps`
 - Learning Paths → `/employee/learning-paths`
@@ -457,51 +493,64 @@ Avatar, Badge, Button, Card, Dialog, Dropdown Menu, Input, Label, Progress, Sele
 
 ---
 
+## Key Business Logic Notes
+
+### Readiness Score Computation (4 places)
+```
+targetMap = merge(COE + Designation targets, taking higher level when both apply)
+met = approved skills where validatedLevel >= targetLevel
+readiness% = round(met / total * 100)
+```
+
+### Match Score Formula
+```
+matchScore = skillScore×0.35 + competencyScore×0.25 + availabilityFit×0.20
+           + billabilityFit×0.12 + evidenceStrength×0.08
+```
+Weights live in `lib/constants.ts` as `MATCH_WEIGHTS`.
+
+### Availability Tier (Excel export pool selection)
+```
+Tier 3: availableFTE > 0.50  (available now — first pick)
+Tier 2: availableFTE > 0.20  (partial)
+Tier 1: availableFTE > 0.00  (marginal)
+Tier 0: availableFTE = 0.00  (fully allocated)
+Any Tier 3 employee beats ALL Tier 2 employees regardless of match score.
+```
+
+### Role Normalization
+Raw codes from `resourcesRequested` → `normalizeResourceRequest(raw)` → `{ canonicalRoles: string[], count, isEM }`.
+`canonicalRoles` is an OR list matched against `employee.jobName` via `contains` (case-insensitive).
+Supports: single codes (SC, P, AC), multi-role patterns (AP/P, SAC/AC, SSE or SE), EM variants (SC (EM)), count prefixes (2 SE).
+
+### Promotion Summary Scoring
+```
+skillReadiness  = met / requiredDesignationSkills * 100
+feedbackReadiness = avg(all rating responses) / 5 * 100
+compositeScore  = round((skillReadiness + feedbackReadiness) / 2)
+```
+
+---
+
 ## What Is NOT Yet Built
 
 | Feature | Status |
 |---------|--------|
-| `/manager/team-learning` page | Link in sidebar exists, no page file |
-| Register page | Route in public list but no page file |
+| `/manager/team-learning` page | Sidebar link exists, no page file |
+| Register page | Public route listed, no page file |
 | Email notifications on approval/rejection | Not implemented |
 | In-app notification system (badge) | Not implemented |
 | PDF export for reports | Not implemented |
-| AI features (Module 14) | Zero implementation — no `ai.service.ts`, no prompts |
-| Test files | Zero test files despite test infrastructure being set up |
+| Test files | Zero test files despite test infrastructure set up |
 | Bulk approve/reject in approvals | Not implemented |
 | Pagination on large tables | Not implemented |
 | Manager endorsement for designation transitions | Not implemented |
+| AI features for skill gaps / learning paths / reports | Service layer exists; not wired to these pages |
+| `pnpm db:migrate` for CoLab schema | Blocked until DATABASE_URL configured |
+| `pnpm etl` to seed reference data | Run after migration |
+| Excel export from Allocation Board (UI button) | CLI script exists; no UI button yet |
+| Response caching for identical AI prompts | Not implemented |
 
 ---
 
-## Key Business Logic Notes
-
-### Readiness Score Computation (used in 4 places)
-```
-targetMap = merge(COE target skills, Designation target skills, taking higher level when both apply)
-currentMap = approved employeeSkills → validatedLevel
-met = skills where currentLevel >= targetLevel
-readiness% = round(met / total * 100)
-```
-This exact logic is duplicated in: `gap-analysis.ts`, `team-reports.ts`, `feedback-submission.ts`, `analytics/page.tsx`
-
-### Promotion Summary Scoring
-```
-skillReadiness  = met / requiredSkills * 100 (from designation skills)
-feedbackReadiness = avg(all rating responses) / 5 * 100
-compositeScore  = round((skillReadiness + feedbackReadiness) / 2)
-promotionStatus = READY(≥85) | NEAR_READY(≥65) | NEEDS_DEVELOPMENT(≥40) | NOT_ELIGIBLE_YET
-```
-
-### Learning Path Steps (Procedural Generation)
-Learning paths are generated in code (not stored in DB). The `generateSteps()` function in `learning-paths.ts` produces steps based on the gap level range — no manual admin configuration needed.
-
-### Project Allocation Guard
-`allocateEmployee()` sums all existing active (non-COMPLETED) project allocations for the employee before allowing a new allocation. Blocks if `totalExisting + newAllocation > 100`.
-
-### Feedback Assignment Validation
-PM_FEEDBACK assignments enforce: reviewer must be the `projectManager` of the specified project, and the employee must have a `ProjectAllocation` record for that project.
-
----
-
-_This document reflects the actual code as of 2026-06-26. For planned/aspirational state see `.claude/memory/module-status.md`._
+_This document reflects the actual code as of 2026-06-28. For planned/aspirational state see `.claude/memory/module-status.md`._
