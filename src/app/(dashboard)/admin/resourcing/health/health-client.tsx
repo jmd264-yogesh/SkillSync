@@ -1,11 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { DecisionCard } from "@/components/shared/decision-card";
+import { AgentTrace } from "@/components/shared/agent-trace";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { triageHealth } from "@/server/actions/project-health";
 import type { ProjectHealthResult } from "@/server/services/health.service";
+import type { TriageResult, TriageIntervention } from "@/lib/ai/agent/health-triage";
 
 const RAG_STYLES = {
   GREEN:   "bg-green-100 text-green-700",
@@ -95,6 +101,17 @@ function Pagination({
   );
 }
 
+const SEVERITY_STYLES: Record<TriageIntervention["severity"], string> = {
+  CRITICAL: "bg-red-50 border-red-200",
+  HIGH: "bg-amber-50 border-amber-200",
+  MEDIUM: "bg-blue-50 border-blue-100",
+};
+const SEVERITY_BADGE: Record<TriageIntervention["severity"], string> = {
+  CRITICAL: "bg-red-100 text-red-700 border-red-300",
+  HIGH: "bg-amber-100 text-amber-700 border-amber-300",
+  MEDIUM: "bg-blue-100 text-blue-700 border-blue-300",
+};
+
 export function HealthClient({
   projects,
   withFlags,
@@ -105,13 +122,46 @@ export function HealthClient({
 }: HealthClientProps) {
   const [rampPage, setRampPage] = useState(1);
   const [projectPage, setProjectPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const [flagFilter, setFlagFilter] = useState("ALL");
+  const [triage, setTriage] = useState<TriageResult | null>(null);
+  const [triageLoading, setTriageLoading] = useState(false);
+  const [triageError, setTriageError] = useState<string | null>(null);
+
+  const filteredProjects = useMemo(() => {
+    let list = projects;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter((p) => p.projectName.toLowerCase().includes(q));
+    }
+    if (flagFilter !== "ALL") {
+      if (flagFilter === "HAS_FLAGS") list = list.filter((p) => p.ragFlags.length > 0);
+      else if (flagFilter === "RAMP_DOWN") list = list.filter((p) => p.isRampDown);
+      else if (flagFilter === "HIGH_LEAKAGE") list = list.filter((p) => p.leakageHours > 40);
+      else list = list.filter((p) => p.ragFlags.some((f) => f.includes(flagFilter)));
+    }
+    return list;
+  }, [projects, search, flagFilter]);
+
+  async function handleRunTriage() {
+    setTriageLoading(true);
+    setTriageError(null);
+    try {
+      const result = await triageHealth();
+      setTriage(result);
+    } catch (e) {
+      setTriageError(String(e));
+    } finally {
+      setTriageLoading(false);
+    }
+  }
 
   const rampSlice = rampDownProjects.slice(
     (rampPage - 1) * RAMP_DOWN_PAGE_SIZE,
     rampPage * RAMP_DOWN_PAGE_SIZE,
   );
 
-  const projectSlice = projects.slice(
+  const projectSlice = filteredProjects.slice(
     (projectPage - 1) * PROJECT_PAGE_SIZE,
     projectPage * PROJECT_PAGE_SIZE,
   );
@@ -137,6 +187,91 @@ export function HealthClient({
           <p className="text-xs text-muted-foreground mt-0.5">Releasable from ramp-downs</p>
         </div>
       </div>
+
+      {/* AI Triage section */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold text-slate-700">AI Portfolio Triage</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Agent sweeps all projects, selects highest-risk, gathers evidence, and drafts interventions.
+          </p>
+        </div>
+        <Button size="sm" onClick={handleRunTriage} disabled={triageLoading}>
+          {triageLoading ? "Triaging…" : "Run Triage"}
+        </Button>
+      </div>
+
+      {triageLoading && (
+        <div className="space-y-2">
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
+        </div>
+      )}
+
+      {triageError && (
+        <p className="text-xs text-red-600 px-1">{triageError}</p>
+      )}
+
+      {triage && (
+        <div className="space-y-3">
+          {/* Portfolio headline */}
+          <div className="bg-violet-50 border border-violet-100 rounded-lg px-4 py-3 flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide mb-1">
+                Portfolio Headline
+              </p>
+              <p className="text-sm font-medium text-slate-800">{triage.portfolioHeadline}</p>
+              {triage.narrative && (
+                <p className="text-xs text-slate-600 mt-1 leading-relaxed">{triage.narrative}</p>
+              )}
+            </div>
+            <div className="flex gap-3 shrink-0 text-center">
+              <div>
+                <p className="text-lg font-bold text-violet-700">{triage.totalRecoverableFTE.toFixed(1)}</p>
+                <p className="text-[10px] text-muted-foreground">FTE recoverable</p>
+              </div>
+              <div>
+                <p className="text-lg font-bold text-red-700">{triage.projectsNeedingAction}</p>
+                <p className="text-[10px] text-muted-foreground">need action</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Intervention cards */}
+          {triage.interventions.map((intervention, i) => (
+            <div
+              key={i}
+              className={cn("border rounded-lg px-4 py-3 space-y-2", SEVERITY_STYLES[intervention.severity])}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm font-semibold text-slate-800">{intervention.projectName}</p>
+                <Badge variant="outline" className={cn("text-[10px] shrink-0", SEVERITY_BADGE[intervention.severity])}>
+                  {intervention.severity}
+                </Badge>
+              </div>
+              <p className="text-xs text-slate-700">
+                <span className="font-semibold">Root cause:</span> {intervention.rootCause}
+              </p>
+              <p className="text-xs text-slate-700">
+                <span className="font-semibold">Action:</span> {intervention.recommendedIntervention}
+              </p>
+              {intervention.redeployTarget && (
+                <p className="text-xs text-violet-700">
+                  ↗ Redeploy opportunity: {intervention.redeployTarget}
+                </p>
+              )}
+              {intervention.releasableFTE > 0 && (
+                <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 border-blue-200">
+                  {intervention.releasableFTE.toFixed(1)} FTE releasable
+                </Badge>
+              )}
+            </div>
+          ))}
+
+          <AgentTrace trace={triage.trace} label="How triage was conducted" />
+        </div>
+      )}
 
       {/* Ramp-down candidates — paginated */}
       {rampDownProjects.length > 0 && (
@@ -170,11 +305,48 @@ export function HealthClient({
         </div>
       )}
 
+      {/* Filters */}
+      <div className="flex flex-wrap gap-2 items-center">
+        <Input
+          placeholder="Search project…"
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setProjectPage(1); }}
+          className="h-8 text-sm w-52"
+        />
+        <Select
+          value={flagFilter}
+          onValueChange={(v) => { setFlagFilter(v ?? "ALL"); setProjectPage(1); }}
+        >
+          <SelectTrigger className="h-8 text-sm w-44">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">All projects</SelectItem>
+            <SelectItem value="HAS_FLAGS">Has risk flags</SelectItem>
+            <SelectItem value="RAMP_DOWN">Ramp-down</SelectItem>
+            <SelectItem value="HIGH_LEAKAGE">High leakage (&gt;40h)</SelectItem>
+            <SelectItem value="RED">Schedule RED</SelectItem>
+            <SelectItem value="SHADOW">Shadow resources</SelectItem>
+          </SelectContent>
+        </Select>
+        {(search || flagFilter !== "ALL") && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 text-xs text-muted-foreground"
+            onClick={() => { setSearch(""); setFlagFilter("ALL"); setProjectPage(1); }}
+          >
+            Clear filters
+          </Button>
+        )}
+      </div>
+
       {/* Project cards — paginated */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <p className="text-xs text-muted-foreground">
-            {projects.length} projects — page {projectPage} of {Math.ceil(projects.length / PROJECT_PAGE_SIZE)}
+            {filteredProjects.length} project{filteredProjects.length !== 1 ? "s" : ""}
+            {filteredProjects.length !== projects.length ? ` (filtered from ${projects.length})` : ""} — page {projectPage} of {Math.max(1, Math.ceil(filteredProjects.length / PROJECT_PAGE_SIZE))}
           </p>
         </div>
 
@@ -238,7 +410,7 @@ export function HealthClient({
 
         <Pagination
           page={projectPage}
-          total={projects.length}
+          total={filteredProjects.length}
           pageSize={PROJECT_PAGE_SIZE}
           onPage={(p) => { setProjectPage(p); window.scrollTo({ top: 0, behavior: "smooth" }); }}
         />

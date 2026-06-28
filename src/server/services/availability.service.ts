@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { normalizeResourceRequest } from "@/lib/role-mapping";
 
 export type UtilisationStatus = "OVER" | "FULL" | "UNDER" | "BENCH";
 
@@ -32,11 +33,22 @@ function utilStatus(pct: number): UtilisationStatus {
 export async function getEmployeeAvailability(
   employeeIds?: string[],
 ): Promise<EmployeeAvailability[]> {
+  const now = new Date();
+
   const employees = await db.employee.findMany({
     where: employeeIds ? { id: { in: employeeIds } } : undefined,
     include: {
       allocations: {
-        where: { project: { status: { notIn: ["COMPLETED"] } } },
+        where: {
+          project: { status: { notIn: ["COMPLETED"] } },
+          // Only allocations that have actually started and not yet ended
+          OR: [
+            { startDate: null, endDate: null },
+            { startDate: null, endDate: { gte: now } },
+            { startDate: { lte: now }, endDate: null },
+            { startDate: { lte: now }, endDate: { gte: now } },
+          ],
+        },
         include: { project: { select: { status: true, endDate: true } } },
       },
       utilisationSnapshots: {
@@ -96,9 +108,19 @@ export async function getAvailableFTE(params: {
 }): Promise<{ employeeId: string; name: string; freeCapacity: number; }[]> {
   const { role, skillId, minSkillLevel, windowStart, windowEnd } = params;
 
+  // Parse role through canonical mapping so "SC" matches "Senior Consultant", "AP/P" matches both, etc.
+  const canonicalRoles = role ? normalizeResourceRequest(role).canonicalRoles : [];
+  const hasRoleFilter = canonicalRoles.length > 0;
+  // Fall back to naive contains when the raw string is unrecognised by the mapping table
+  const roleWhere = hasRoleFilter
+    ? { OR: canonicalRoles.map((r) => ({ jobName: { contains: r } })) }
+    : role
+    ? { jobName: { contains: role } }
+    : {};
+
   const employees = await db.employee.findMany({
     where: {
-      ...(role ? { jobName: { contains: role } } : {}),
+      ...roleWhere,
       ...(skillId && minSkillLevel ? {
         employeeSkills: {
           some: { skillId, status: "APPROVED", validatedLevel: { gte: minSkillLevel } },

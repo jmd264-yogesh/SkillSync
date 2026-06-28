@@ -5,6 +5,35 @@ export const COPILOT_TOOLS: Tool[] = [
   {
     functionDeclarations: [
       {
+        name: "plan_staffing",
+        description:
+          "Build 2–3 conflict-checked staffing plans for a set of new projects. The agent expands demand by role, finds candidates, conflict-checks redeployments against active projects, and returns distinct plans (Plan A: redeploy-heavy, Plan B: delivery-safe, etc.) with tradeoff summaries. Use this when the user asks 'can we take on X projects', 'staff these projects', 'do we have capacity for Y'.",
+        parameters: {
+          type: SchemaType.OBJECT,
+          properties: {
+            adHoc: {
+              type: SchemaType.ARRAY,
+              description: "New projects to plan for",
+              items: {
+                type: SchemaType.OBJECT,
+                properties: {
+                  category: {
+                    type: SchemaType.STRING,
+                    description:
+                      "One of: D_AND_D, TACTICAL_BUILD, DATA_PLATFORM_BUILD, ENTERPRISE_BUILD, DATA_SCIENCE, AI_PROJECT, MS_PROJECT, FULL_STACK, VALUE_CREATION, OTHER",
+                  },
+                  count: { type: SchemaType.NUMBER, description: "Number of projects of this type" },
+                  start: { type: SchemaType.STRING, description: "ISO date string for project start" },
+                  weeks: { type: SchemaType.NUMBER, description: "Project duration in weeks" },
+                },
+                required: ["category", "count", "start", "weeks"],
+              },
+            },
+          },
+          required: ["adHoc"],
+        },
+      },
+      {
         name: "recommend_resources",
         description:
           "Get ranked employee recommendations for a pipeline request or ad-hoc skill requirements. Returns skill score, competency score, availability, and a hire/redeploy signal for each candidate.",
@@ -27,6 +56,10 @@ export const COPILOT_TOOLS: Tool[] = [
                 },
                 required: ["skillId", "skillName", "requiredLevel"],
               },
+            },
+            role: {
+              type: SchemaType.STRING,
+              description: "Role code or name to filter candidates by (e.g. 'SC', 'AP/P', 'Senior Consultant'). Raw text from the Resources Requested column is accepted.",
             },
           },
         },

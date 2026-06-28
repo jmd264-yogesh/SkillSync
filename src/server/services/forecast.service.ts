@@ -30,6 +30,12 @@ export interface MonthlyGap {
   gap: number;
 }
 
+export interface AttritionRecord {
+  name: string;
+  role: string | null;
+  resignationDate: Date;
+}
+
 export interface PipelineOutlook {
   monthlyGaps: MonthlyGap[];
   firstShortfallMonth: string | null;
@@ -38,6 +44,12 @@ export interface PipelineOutlook {
   probableCount: number;
   attritionCount: number;
   dataCoverage: number;
+  // Supply-side enrichment
+  totalEmployees: number;
+  benchCount: number;
+  overAllocCount: number;
+  attritionDetail: AttritionRecord[];
+  roleHeadcount: { role: string; count: number }[];
 }
 
 /**
@@ -253,5 +265,37 @@ export async function getPipelineOutlook(params: {
     ? Math.round(requests.filter((r) => r.likelyStart).length / requests.length * 100)
     : 0;
 
-  return { monthlyGaps, firstShortfallMonth, firstConfirmedShortfallMonth, confirmedCount, probableCount, attritionCount, dataCoverage };
+  // Supply-side enrichment
+  const totalEmployees = activeEmployees.length;
+  const benchCount = activeEmployees.filter((e) => e.allocations.length === 0).length;
+  const overAllocCount = activeEmployees.filter((e) => {
+    const totalAlloc = e.allocations.reduce((s, a) => s + a.allocation, 0);
+    return totalAlloc > 100;
+  }).length;
+
+  const attritionDetail: AttritionRecord[] = attrition
+    .filter((e) => e.dateOfResignation !== null)
+    .map((e) => ({
+      name: e.name,
+      role: e.jobName,
+      resignationDate: e.dateOfResignation as Date,
+    }))
+    .sort((a, b) => a.resignationDate.getTime() - b.resignationDate.getTime());
+
+  // Role headcount (top 10 by count, ignoring null)
+  const roleMap = new Map<string, number>();
+  for (const e of activeEmployees) {
+    const role = e.jobName ?? "Unclassified";
+    roleMap.set(role, (roleMap.get(role) ?? 0) + 1);
+  }
+  const roleHeadcount = Array.from(roleMap.entries())
+    .map(([role, count]) => ({ role, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
+  return {
+    monthlyGaps, firstShortfallMonth, firstConfirmedShortfallMonth,
+    confirmedCount, probableCount, attritionCount, dataCoverage,
+    totalEmployees, benchCount, overAllocCount, attritionDetail, roleHeadcount,
+  };
 }

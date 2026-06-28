@@ -3,6 +3,7 @@ import { getPipelineRequests } from "@/server/actions/recommendation";
 import { PageHeader } from "@/components/shared/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MatchClient } from "./match-client";
+import { ExcelDownloadButton } from "./excel-download-button";
 
 async function MatchPageContent() {
   const pipelineRequests = await getPipelineRequests();
@@ -15,7 +16,9 @@ export default function MatchPage() {
       <PageHeader
         title="Resource Match Engine"
         description="Two-dimension matching: technical skill score × consulting competency score. Every result ends in a Redeploy or Hire signal."
-      />
+      >
+        <ExcelDownloadButton />
+      </PageHeader>
       <Suspense fallback={<div className="space-y-3"><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /></div>}>
         <MatchPageContent />
       </Suspense>

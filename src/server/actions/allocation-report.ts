@@ -4,8 +4,10 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { UnauthorizedError, ForbiddenError } from "@/lib/errors";
 import { getEmployeeAvailability } from "@/server/services/availability.service";
+import { proposeReallocations } from "@/lib/ai/agent/reallocation";
 import { allocationReportFilterSchema } from "@/validations/resourcing.schema";
 import type { EmployeeAvailability } from "@/server/services/availability.service";
+import type { ReallocationResult } from "@/lib/ai/agent/reallocation";
 
 export interface AllocationReportRow extends EmployeeAvailability {
   coe: string | null;
@@ -72,4 +74,12 @@ export async function getAllocationReport(input: unknown): Promise<AllocationRep
   }
 
   return filtered.sort((a, b) => b.actualUtil - a.actualUtil);
+}
+
+export async function getReallocationProposals(windowDays = 14): Promise<ReallocationResult> {
+  const session = await auth();
+  if (!session) throw new UnauthorizedError();
+  if (session.user.role !== "ADMIN") throw new ForbiddenError();
+
+  return proposeReallocations(windowDays);
 }

@@ -18,7 +18,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
-    "etl": "npx tsx scripts/etl/ingest.ts"
+    "etl": "npx tsx scripts/etl/ingest.ts",
+    "export:excel": "npx tsx scripts/export-resource-excel.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",

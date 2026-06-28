@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { UnauthorizedError, ForbiddenError } from "@/lib/errors";
 import { computeMatchRanking } from "@/server/services/matching.service";
+import { normalizeResourceRequest } from "@/lib/role-mapping";
 import { recommendForPipelineSchema, recommendAdHocSchema } from "@/validations/resourcing.schema";
 import type { MatchResult } from "@/server/services/matching.service";
 
@@ -30,8 +31,11 @@ export async function recommendForPipelineRequest(
       .map((s) => ({ skillId: s.id, skillName: s.name, requiredLevel: 3 }));
   }
 
+  const parsed = normalizeResourceRequest(request.resourcesRequested ?? null);
+
   return computeMatchRanking({
     requiredSkills,
+    canonicalRoles: parsed.canonicalRoles.length > 0 ? parsed.canonicalRoles : undefined,
     topN: 10,
   });
 }

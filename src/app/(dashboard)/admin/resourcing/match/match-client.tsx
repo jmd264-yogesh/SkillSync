@@ -29,6 +29,18 @@ export function MatchClient({ pipelineRequests }: MatchClientProps) {
   const [results, setResults] = useState<MatchResult[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [sowFilter, setSowFilter] = useState<"ALL" | "CONFIRMED" | "PROBABLE">("ALL");
+  const [signalFilter, setSignalFilter] = useState<"ALL" | "REDEPLOY" | "PARTIAL_HIRE" | "HIRE">("ALL");
+
+  const filteredRequests = pipelineRequests.filter((r) => {
+    if (sowFilter === "CONFIRMED") return r.sowSigned;
+    if (sowFilter === "PROBABLE") return !r.sowSigned;
+    return true;
+  });
+
+  const filteredResults = results
+    ? results.filter((r) => signalFilter === "ALL" || r.signal === signalFilter)
+    : null;
 
   async function handleSearch() {
     if (!selectedId) return;
@@ -50,25 +62,41 @@ export function MatchClient({ pipelineRequests }: MatchClientProps) {
         <CardHeader className="px-5 py-3 pb-0">
           <CardTitle className="text-sm font-semibold text-slate-700">Select Pipeline Request</CardTitle>
         </CardHeader>
-        <CardContent className="px-5 py-4 flex gap-3">
-          <Select onValueChange={(v) => setSelectedId(v ?? "")} value={selectedId}>
-            <SelectTrigger className="flex-1 max-w-md">
-              <SelectValue placeholder="Choose a pipeline request…" />
-            </SelectTrigger>
-            <SelectContent>
-              {pipelineRequests.map((r) => {
-                const label = `${r.sowSigned ? "✓ " : ""}${r.client ?? "Unknown client"} — ${r.requestType ?? "N/A"}${r.cluster ? ` (Cluster ${r.cluster})` : ""}`;
-                return (
-                  <SelectItem key={r.id} value={r.id}>
-                    {label}
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
-          <Button onClick={handleSearch} disabled={!selectedId || loading}>
-            {loading ? "Matching…" : "Find Matches"}
-          </Button>
+        <CardContent className="px-5 py-4 space-y-3">
+          <div className="flex flex-wrap gap-2 items-center">
+            {/* SOW filter */}
+            <Select value={sowFilter} onValueChange={(v) => { setSowFilter((v as typeof sowFilter) ?? "ALL"); setSelectedId(""); }}>
+              <SelectTrigger className="h-8 text-sm w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">All requests ({pipelineRequests.length})</SelectItem>
+                <SelectItem value="CONFIRMED">Confirmed SOW ✓ ({pipelineRequests.filter(r => r.sowSigned).length})</SelectItem>
+                <SelectItem value="PROBABLE">Probable ({pipelineRequests.filter(r => !r.sowSigned).length})</SelectItem>
+              </SelectContent>
+            </Select>
+            <span className="text-xs text-muted-foreground">{filteredRequests.length} request{filteredRequests.length !== 1 ? "s" : ""}</span>
+          </div>
+          <div className="flex gap-3">
+            <Select onValueChange={(v) => setSelectedId(v ?? "")} value={selectedId}>
+              <SelectTrigger className="flex-1 max-w-md">
+                <SelectValue placeholder="Choose a pipeline request…" />
+              </SelectTrigger>
+              <SelectContent>
+                {filteredRequests.map((r) => {
+                  const label = `${r.sowSigned ? "✓ " : ""}${r.client ?? "Unknown client"} — ${r.requestType ?? "N/A"}${r.cluster ? ` (Cluster ${r.cluster})` : ""}`;
+                  return (
+                    <SelectItem key={r.id} value={r.id}>
+                      {label}
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+            <Button onClick={handleSearch} disabled={!selectedId || loading}>
+              {loading ? "Matching…" : "Find Matches"}
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -96,18 +124,34 @@ export function MatchClient({ pipelineRequests }: MatchClientProps) {
 
       {!loading && results && results.length > 0 && (
         <div className="space-y-3">
-          <p className="text-xs text-muted-foreground">{results.length} candidates ranked by match score</p>
-          {results.map((r) => {
+          <div className="flex items-center gap-3">
+            <p className="text-xs text-muted-foreground">
+              {filteredResults?.length ?? 0} of {results.length} candidates
+            </p>
+            <Select value={signalFilter} onValueChange={(v) => setSignalFilter((v as typeof signalFilter) ?? "ALL")}>
+              <SelectTrigger className="h-7 text-xs w-44">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">All signals</SelectItem>
+                <SelectItem value="REDEPLOY">Redeploy ✓</SelectItem>
+                <SelectItem value="PARTIAL_HIRE">Partial hire ~</SelectItem>
+                <SelectItem value="HIRE">Hire required ✗</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {(filteredResults ?? []).map((r) => {
             const isExpanded = expanded === r.employeeId;
             const variant = r.signal === "REDEPLOY" ? "YES" : r.signal === "PARTIAL_HIRE" ? "YES_WITH_CONDITIONS" : "NO";
 
             return (
               <DecisionCard
                 key={r.employeeId}
-                headline={`${r.name} — Match: ${r.matchScore}/100`}
+                headline={`[${r.employeeCode}] ${r.name}${r.jobName ? ` · ${r.jobName}` : ""} — Match: ${r.matchScore}/100`}
                 decisionVariant={variant}
                 action={r.signal === "REDEPLOY" ? `Redeploy ${r.name} (${Math.round(r.availableFTE * 100)}% capacity available)` : `Hire externally — ${r.unmetSkills.slice(0, 2).join(", ")} gap`}
                 evidence={[
+                  `Employee: ${r.employeeCode}`,
                   `Skill Score: ${r.skillScore}/100`,
                   `Competency Score: ${r.competencyScore}/100`,
                   `Availability: ${Math.round(r.availableFTE * 100)}%`,

@@ -11,7 +11,8 @@ export interface SkillBreakdown {
 }
 
 export interface MatchResult {
-  employeeId: string;
+  employeeId: string;   // internal UUID — use as React key / pool-depletion tracking
+  employeeCode: string; // business key (employee_code) — primary display identifier
   name: string;
   jobName: string | null;
   skillScore: number;
@@ -32,15 +33,24 @@ export interface MatchResult {
  */
 export async function computeMatchRanking(params: {
   requiredSkills: { skillId: string; skillName: string; requiredLevel: number }[];
+  /** Canonical role names from normalizeResourceRequest — filters by jobName (OR match). */
+  canonicalRoles?: string[];
   windowStart?: Date;
   windowEnd?: Date;
   topN?: number;
 }): Promise<MatchResult[]> {
-  const { requiredSkills, windowStart, windowEnd, topN = 20 } = params;
+  const { requiredSkills, canonicalRoles, windowStart, windowEnd, topN = 20 } = params;
   const hasSkillFilter = requiredSkills.length > 0;
+  const hasRoleFilter = canonicalRoles && canonicalRoles.length > 0;
   const skillIds = requiredSkills.map((s) => s.skillId);
 
+  // Build role filter: match jobName against any canonical role (case-insensitive contains)
+  const roleWhere = hasRoleFilter
+    ? { OR: canonicalRoles!.map((r) => ({ jobName: { contains: r } })) }
+    : {};
+
   const employees = await db.employee.findMany({
+    where: roleWhere,
     include: {
       employeeSkills: {
         // When no skill filter, still load approved skills for evidence strength calc
@@ -143,6 +153,7 @@ export async function computeMatchRanking(params: {
 
     return {
       employeeId: emp.id,
+      employeeCode: emp.employeeCode,
       name: emp.name,
       jobName: emp.jobName,
       skillScore,

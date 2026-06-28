@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { Send, Bot, User } from "lucide-react";
+import { MarkdownMessage } from "@/components/shared/markdown-message";
 
 interface Message {
   role: "user" | "assistant";
@@ -82,12 +83,16 @@ export function CopilotChat() {
               </div>
             )}
             <Card className={cn(
-              "max-w-[80%] px-4 py-3 text-sm leading-relaxed border-0 shadow-sm",
+              "max-w-[80%] px-4 py-3 border-0 shadow-sm",
               msg.role === "user"
-                ? "bg-primary text-white"
+                ? "bg-primary text-white text-sm leading-relaxed"
                 : "bg-white text-slate-800",
             )}>
-              <p className="whitespace-pre-wrap">{msg.content}</p>
+              {msg.role === "user" ? (
+                <p className="whitespace-pre-wrap text-sm">{msg.content}</p>
+              ) : (
+                <MarkdownMessage content={msg.content} />
+              )}
             </Card>
             {msg.role === "user" && (
               <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center shrink-0 mt-0.5">
