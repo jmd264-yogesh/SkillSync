@@ -19,19 +19,19 @@ export async function recommendForPipelineRequest(
   const request = await db.pipelineRequest.findUnique({ where: { id } });
   if (!request) return [];
 
-  // Parse skillset text into skill names and find matching skills
-  const skillNames = (request.skillset ?? "").split(/[,;/]/).map((s) => s.trim()).filter(Boolean);
-  const requiredSkills = await Promise.all(
-    skillNames.map(async (name) => {
-      const skill = await db.skill.findFirst({
-        where: { name: { contains: name } },
-      });
-      return skill ? { skillId: skill.id, skillName: skill.name, requiredLevel: 3 } : null;
-    }),
-  );
+  // Match skills whose names appear within the skillset string (correct direction for partial tokens like "Python 3.x")
+  const skillsetText = (request.skillset ?? "").toLowerCase();
+  let requiredSkills: { skillId: string; skillName: string; requiredLevel: number }[] = [];
+
+  if (skillsetText.length > 0) {
+    const allSkills = await db.skill.findMany({ select: { id: true, name: true } });
+    requiredSkills = allSkills
+      .filter((s) => skillsetText.includes(s.name.toLowerCase()))
+      .map((s) => ({ skillId: s.id, skillName: s.name, requiredLevel: 3 }));
+  }
 
   return computeMatchRanking({
-    requiredSkills: requiredSkills.filter((s): s is NonNullable<typeof s> => s !== null),
+    requiredSkills,
     topN: 10,
   });
 }

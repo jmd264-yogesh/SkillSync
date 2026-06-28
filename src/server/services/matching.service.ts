@@ -37,14 +37,14 @@ export async function computeMatchRanking(params: {
   topN?: number;
 }): Promise<MatchResult[]> {
   const { requiredSkills, windowStart, windowEnd, topN = 20 } = params;
-  if (requiredSkills.length === 0) return [];
-
+  const hasSkillFilter = requiredSkills.length > 0;
   const skillIds = requiredSkills.map((s) => s.skillId);
 
   const employees = await db.employee.findMany({
     include: {
       employeeSkills: {
-        where: { status: "APPROVED", skillId: { in: skillIds } },
+        // When no skill filter, still load approved skills for evidence strength calc
+        where: hasSkillFilter ? { status: "APPROVED", skillId: { in: skillIds } } : { status: "APPROVED" },
         include: { skill: true, evidences: true },
       },
       competencies: true,
@@ -64,22 +64,27 @@ export async function computeMatchRanking(params: {
     // ── Skill Score ──────────────────────────────────────────
     let skillCoverage = 0;
     let skillDepth = 0;
+    let coveragePct = 1; // no skill filter = 100% coverage by definition
     const breakdown: SkillBreakdown[] = [];
     const unmet: string[] = [];
 
-    for (const req of requiredSkills) {
-      const empSkill = emp.employeeSkills.find((es) => es.skillId === req.skillId);
-      const current = empSkill?.validatedLevel ?? 0;
-      const met = current >= req.requiredLevel;
-      if (met) skillCoverage++;
-      else unmet.push(req.skillName);
-      skillDepth += Math.min(current / req.requiredLevel, 1);
-      breakdown.push({ skillName: req.skillName, required: req.requiredLevel, current, met });
+    if (hasSkillFilter) {
+      for (const req of requiredSkills) {
+        const empSkill = emp.employeeSkills.find((es) => es.skillId === req.skillId);
+        const current = empSkill?.validatedLevel ?? 0;
+        const met = current >= req.requiredLevel;
+        if (met) skillCoverage++;
+        else unmet.push(req.skillName);
+        skillDepth += Math.min(current / req.requiredLevel, 1);
+        breakdown.push({ skillName: req.skillName, required: req.requiredLevel, current, met });
+      }
+      coveragePct = skillCoverage / requiredSkills.length;
     }
 
-    const coveragePct = requiredSkills.length > 0 ? skillCoverage / requiredSkills.length : 0;
-    const depthPct = requiredSkills.length > 0 ? skillDepth / requiredSkills.length : 0;
-    const skillScore = Math.round((coveragePct * 0.6 + depthPct * 0.4) * 100);
+    const depthPct = hasSkillFilter && requiredSkills.length > 0 ? skillDepth / requiredSkills.length : 1;
+    const skillScore = hasSkillFilter
+      ? Math.round((coveragePct * 0.6 + depthPct * 0.4) * 100)
+      : Math.round((emp.employeeSkills.length > 0 ? Math.min(emp.employeeSkills.length / 5, 1) : 0.3) * 100);
 
     // ── Competency Score ─────────────────────────────────────
     // Average of all 5 consulting behaviour scores (max 5 → normalise to 100)
@@ -129,7 +134,10 @@ export async function computeMatchRanking(params: {
 
     // ── Signal ───────────────────────────────────────────────
     let signal: MatchSignal = "REDEPLOY";
-    if (coveragePct < 0.7 || skillScore < 60 || availableFTE === 0) {
+    if (!hasSkillFilter) {
+      // Availability-only mode: signal based purely on free capacity
+      signal = availableFTE > 0.5 ? "REDEPLOY" : availableFTE > 0.1 ? "PARTIAL_HIRE" : "HIRE";
+    } else if (coveragePct < 0.7 || skillScore < 60 || availableFTE === 0) {
       signal = coveragePct < 0.4 ? "HIRE" : "PARTIAL_HIRE";
     }
 

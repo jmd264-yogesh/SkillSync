@@ -56,15 +56,14 @@ export function MatchClient({ pipelineRequests }: MatchClientProps) {
               <SelectValue placeholder="Choose a pipeline request…" />
             </SelectTrigger>
             <SelectContent>
-              {pipelineRequests.map((r) => (
-                <SelectItem key={r.id} value={r.id}>
-                  <span className="flex items-center gap-2">
-                    {r.sowSigned && <span className="inline-block w-2 h-2 rounded-full bg-green-500" />}
-                    {r.client ?? "Unknown client"} — {r.requestType ?? "N/A"}
-                    {r.cluster ? ` (Cluster ${r.cluster})` : ""}
-                  </span>
-                </SelectItem>
-              ))}
+              {pipelineRequests.map((r) => {
+                const label = `${r.sowSigned ? "✓ " : ""}${r.client ?? "Unknown client"} — ${r.requestType ?? "N/A"}${r.cluster ? ` (Cluster ${r.cluster})` : ""}`;
+                return (
+                  <SelectItem key={r.id} value={r.id}>
+                    {label}
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
           <Button onClick={handleSearch} disabled={!selectedId || loading}>
