@@ -247,7 +247,6 @@ const SCORE_DIMS: { key: keyof CandidateScores; label: string; weight: string }[
   { key: "competency",   label: "Competency",    weight: "22%" },
   { key: "availability", label: "Availability",  weight: "18%" },
   { key: "billability",  label: "Billability",   weight: "10%" },
-  { key: "evidence",     label: "Evidence",      weight: "6%"  },
 ];
 
 function scoreColor(s: number) {
