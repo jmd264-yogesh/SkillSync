@@ -50,6 +50,13 @@ const MULTI_ROLE_PATTERNS: Array<{ pattern: RegExp; roles: string[]; display?: s
   { pattern: /^pa$/i,
     roles: ["Principal Architect", "Principal Technology Architect"],
     display: "Principal Architect" },
+  // EM / Engagement Manager → Solutions Consultant / Consultant / Senior Consultant
+  { pattern: /^em$/i,
+    roles: ["Solutions Consultant", "Consultant", "Senior Consultant"],
+    display: "Engagement Manager" },
+  { pattern: /^engagement manager$/i,
+    roles: ["Solutions Consultant", "Consultant", "Senior Consultant"],
+    display: "Engagement Manager" },
   { pattern: /^ap\s*\/\s*p$/i,
     roles: ["Associate Partner", "Principal"] },
   { pattern: /^sac\s*([\/,]|\s+or\s+)\s*ac$/i,
