@@ -44,7 +44,7 @@ export function RollingOffStrip({ rollingOff }: RollingOffStripProps) {
     <Card className="border-0 shadow-sm bg-blue-50/60">
       <CardHeader className="px-5 py-2.5 border-b flex flex-row items-center justify-between">
         <CardTitle className="text-sm font-semibold text-blue-800">
-          Becoming available (next 14 days) — {rollingOff.length} employee
+          Becoming available (next 14 days) - {rollingOff.length} employee
           {rollingOff.length !== 1 ? "s" : ""}
         </CardTitle>
         <Button
@@ -67,7 +67,7 @@ export function RollingOffStrip({ rollingOff }: RollingOffStripProps) {
               variant="outline"
               className="bg-white text-blue-700 border-blue-200 text-xs"
             >
-              {r.employeeCode} · {r.jobName ?? "—"} · {r.releasableFrom?.toLocaleDateString()}
+              {r.employeeCode} · {r.jobName ?? "-"} · {r.releasableFrom?.toLocaleDateString()}
             </Badge>
           ))}
         </div>
@@ -99,14 +99,14 @@ export function RollingOffStrip({ rollingOff }: RollingOffStripProps) {
                   key={p.employeeId}
                   headline={`${p.employeeName} → ${p.proposedProjectDescription}`}
                   decisionVariant={variant}
-                  action={`Start: ${p.startDate} — ${p.freeCapacityPct}% capacity available`}
+                  action={`Start: ${p.startDate} - ${p.freeCapacityPct}% capacity available`}
                   evidence={[
                     `Fit score: ${p.fitScore}/100`,
                     p.fitRationale,
                     ...(p.currentRole ? [`Current role: ${p.currentRole}`] : []),
                   ]}
                 >
-                  {/* Apply button — disabled (propose only) */}
+                  {/* Apply button - disabled (propose only) */}
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger>
@@ -115,7 +115,7 @@ export function RollingOffStrip({ rollingOff }: RollingOffStripProps) {
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent side="right">
-                        <p className="text-xs">Human review required — proposals only</p>
+                        <p className="text-xs">Human review required - proposals only</p>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>

@@ -14,6 +14,7 @@ import { SkillFormDialog } from "@/components/forms/skill-form-dialog";
 import { deleteSkill, updateSkill } from "@/server/actions/skill";
 import { EmptyState } from "@/components/shared/empty-state";
 import type { SkillCategory } from "@prisma/client";
+import { cn } from "@/lib/utils";
 
 interface Skill {
   id: string;
@@ -181,89 +182,113 @@ export function SkillsClient({ skills }: { skills: Skill[] }) {
 
       {/* Edit drawer */}
       <Sheet open={!!drawerSkill} onOpenChange={(open) => { if (!open) setDrawerSkill(null); }}>
-        <SheetContent className="w-[380px] overflow-y-auto">
-          <SheetHeader className="flex-row items-center justify-between pr-0 mb-6">
-            <SheetTitle className="text-base font-bold">Edit Skill</SheetTitle>
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDrawerSkill(null)}>
-              <X className="h-4 w-4" />
-            </Button>
-          </SheetHeader>
-
+        <SheetContent className="w-[400px] sm:w-[440px] p-0 border-l border-slate-200 overflow-y-auto no-scrollbar">
           {drawerSkill && (
-            <div className="space-y-5">
-              {/* Category badge */}
-              <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full ${categoryConfig[drawerSkill.category].bg} border ${categoryConfig[drawerSkill.category].border}`}>
-                <div className={`h-2 w-2 rounded-full ${categoryConfig[drawerSkill.category].dot}`} />
-                <span className={`text-xs font-semibold ${categoryConfig[drawerSkill.category].text}`}>
-                  {categoryConfig[drawerSkill.category].label}
-                </span>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Name</Label>
-                <Input
-                  value={drawerName}
-                  onChange={(e) => setDrawerName(e.target.value)}
-                  className="rounded-lg"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Category</Label>
-                <select
-                  value={drawerCategory}
-                  onChange={(e) => setDrawerCategory(e.target.value as SkillCategory)}
-                  className="select-field"
-                >
-                  {CATEGORIES.map((c) => (
-                    <option key={c.value} value={c.value}>{c.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Description</Label>
-                <Textarea
-                  value={drawerDesc}
-                  onChange={(e) => setDrawerDesc(e.target.value)}
-                  rows={3}
-                  className="rounded-lg resize-none"
-                  placeholder="Brief description…"
-                />
-              </div>
-
-              {/* Stats */}
-              <div className="rounded-lg border border-slate-100 bg-slate-50/60 p-3.5 space-y-2">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Usage</p>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { label: "Employees", value: drawerSkill._count.employeeSkills },
-                    { label: "COEs", value: drawerSkill._count.coeSkills },
-                    { label: "Designations", value: drawerSkill._count.designationSkills },
-                  ].map((s) => (
-                    <div key={s.label} className="text-center">
-                      <p className="text-lg font-bold text-gray-900">{s.value}</p>
-                      <p className="text-[11px] text-muted-foreground">{s.label}</p>
-                    </div>
-                  ))}
+            <div className="flex flex-col h-full bg-slate-50/50">
+              {/* Header section with gradient border */}
+              <div className="px-6 py-6 bg-white border-b border-slate-100 shrink-0">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold tracking-widest text-indigo-600 uppercase">Skill Settings</span>
+                    <h2 className="text-xl font-extrabold text-slate-800 leading-tight">Edit Skill Details</h2>
+                  </div>
+                </div>
+                
+                {/* Category badge */}
+                <div className="mt-4 flex">
+                  <span className={cn(
+                    "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border",
+                    categoryConfig[drawerSkill.category].bg,
+                    categoryConfig[drawerSkill.category].text,
+                    categoryConfig[drawerSkill.category].border
+                  )}>
+                    <span className={cn("h-1.5 w-1.5 rounded-full", categoryConfig[drawerSkill.category].dot)} />
+                    {categoryConfig[drawerSkill.category].label}
+                  </span>
                 </div>
               </div>
 
-              <div className="flex gap-2 pt-2">
+              {/* Form Content */}
+              <div className="flex-1 p-6 space-y-6 overflow-y-auto">
+                <div className="space-y-5">
+                  {/* Name field */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Skill Name</Label>
+                    <Input
+                      value={drawerName}
+                      onChange={(e) => setDrawerName(e.target.value)}
+                      className="h-10 bg-white border-slate-200 rounded-xl focus-visible:ring-2 focus-visible:ring-primary/20 shadow-xs"
+                      placeholder="e.g. React.js"
+                    />
+                  </div>
+
+                  {/* Category field */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Skill Classification</Label>
+                    <div className="relative">
+                      <select
+                        value={drawerCategory}
+                        onChange={(e) => setDrawerCategory(e.target.value as SkillCategory)}
+                        className="flex h-10 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 font-medium transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-primary/20 outline-none appearance-none"
+                      >
+                        {CATEGORIES.map((c) => (
+                          <option key={c.value} value={c.value}>{c.label}</option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                    </div>
+                  </div>
+
+                  {/* Description field */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Skill Description</Label>
+                    <Textarea
+                      value={drawerDesc}
+                      onChange={(e) => setDrawerDesc(e.target.value)}
+                      rows={4}
+                      className="bg-white border-slate-200 rounded-xl focus-visible:ring-2 focus-visible:ring-primary/20 shadow-xs resize-none"
+                      placeholder="Brief description of the skill, focus areas, or certification standards..."
+                    />
+                  </div>
+                </div>
+
+                {/* Dashboard Usage Statistics Card */}
+                <div className="rounded-2xl border border-slate-200/80 bg-white shadow-xs p-5 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Usage & Impact Metrics</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    {[
+                      { label: "Employees", value: drawerSkill._count.employeeSkills, color: "text-indigo-600 bg-indigo-50 border-indigo-100/50" },
+                      { label: "COEs", value: drawerSkill._count.coeSkills, color: "text-violet-600 bg-violet-50 border-violet-100/50" },
+                      { label: "Designations", value: drawerSkill._count.designationSkills, color: "text-sky-600 bg-sky-50 border-sky-100/50" },
+                    ].map((s) => (
+                      <div key={s.label} className={cn("rounded-xl border p-3 text-center transition-all duration-200", s.color.split(" ")[1], s.color.split(" ")[2])}>
+                        <p className={cn("text-2xl font-extrabold tracking-tight", s.color.split(" ")[0])}>{s.value}</p>
+                        <p className="text-[9px] font-bold text-slate-500 mt-1 uppercase tracking-wider">{s.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons Panel */}
+              <div className="p-6 bg-white border-t border-slate-100 flex gap-3 shrink-0">
                 <Button
                   onClick={handleDrawerSave}
                   disabled={drawerSaving}
-                  className="flex-1 bg-primary rounded-lg text-sm font-semibold hover:bg-primary/90"
+                  className="flex-1 h-11 bg-primary text-white hover:bg-secondary hover:shadow-md rounded-xl text-sm font-semibold transition-all duration-200 cursor-pointer"
                 >
-                  <Pencil className="h-3.5 w-3.5 mr-1.5" />
-                  {drawerSaving ? "Saving…" : "Save Changes"}
+                  <Pencil className="h-4 w-4 mr-2" />
+                  {drawerSaving ? "Saving changes..." : "Save Changes"}
                 </Button>
+                
                 <Button
                   variant="outline"
                   onClick={() => { setDeleteId(drawerSkill.id); setDrawerSkill(null); }}
-                  className="rounded-lg text-red-600 border-red-200 hover:bg-red-50"
+                  className="h-11 w-11 rounded-xl text-rose-600 border-slate-200 hover:bg-rose-50 hover:border-rose-100 hover:text-rose-700 transition-all duration-200 cursor-pointer"
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-4.5 w-4.5" />
                 </Button>
               </div>
             </div>

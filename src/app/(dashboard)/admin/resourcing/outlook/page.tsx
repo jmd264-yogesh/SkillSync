@@ -74,7 +74,7 @@ function SupplyBar({
       <div className="flex flex-wrap gap-x-4 gap-y-1">
         {bars.map((b) => (
           <span key={b.label} className={cn("text-xs font-medium", b.text)}>
-            {b.label} — {b.count} ({pct(b.count)})
+            {b.label} - {b.count} ({pct(b.count)})
           </span>
         ))}
       </div>
@@ -136,22 +136,22 @@ async function OutlookContent() {
       <DecisionCard
         headline={
           hasConfirmedShortfall
-            ? `Confirmed-only shortfall from ${outlook.firstConfirmedShortfallMonth} — SOW-signed demand exceeds supply`
+            ? `Confirmed-only shortfall from ${outlook.firstConfirmedShortfallMonth} - SOW-signed demand exceeds supply`
             : hasProbableShortfall
-            ? `Probable shortfall projected from ${outlook.firstShortfallMonth} — unsigned pipeline only`
+            ? `Probable shortfall projected from ${outlook.firstShortfallMonth} - unsigned pipeline only`
             : "No shortfall projected in 6-month horizon"
         }
         decisionVariant={decisionVariant}
         action={
           hasConfirmedShortfall
-            ? `Initiate hiring immediately — ${outlook.confirmedCount} SOW-signed requests already exceed supply`
+            ? `Initiate hiring immediately - ${outlook.confirmedCount} SOW-signed requests already exceed supply`
             : hasProbableShortfall
-            ? "Monitor unsigned pipeline — initiate hiring if deals close (6–8 week lead time)"
+            ? "Monitor unsigned pipeline - initiate hiring if deals close (6–8 week lead time)"
             : "Monitor pipeline and revisit when new SOW-signed requests arrive"
         }
         evidence={[
-          `${outlook.confirmedCount} confirmed (SOW-signed) — ${hasConfirmedShortfall ? `shortfall from ${outlook.firstConfirmedShortfallMonth}` : "within supply"}`,
-          `${outlook.probableCount} probable (unsigned) — weighted by deal stage probability`,
+          `${outlook.confirmedCount} confirmed (SOW-signed) - ${hasConfirmedShortfall ? `shortfall from ${outlook.firstConfirmedShortfallMonth}` : "within supply"}`,
+          `${outlook.probableCount} probable (unsigned) - weighted by deal stage probability`,
           `${outlook.attritionCount} departure${outlook.attritionCount !== 1 ? "s" : ""} factored into supply`,
           `Data coverage: ${outlook.dataCoverage}%`,
         ]}
@@ -275,7 +275,7 @@ async function OutlookContent() {
           <CardHeader className="px-5 py-3 border-b flex flex-row items-center gap-2">
             <UserMinus className="w-4 h-4 text-slate-400" />
             <CardTitle className="text-sm font-semibold">
-              Attrition Timeline — {outlook.attritionDetail.length} departure{outlook.attritionDetail.length !== 1 ? "s" : ""} in 6 months
+              Attrition Timeline - {outlook.attritionDetail.length} departure{outlook.attritionDetail.length !== 1 ? "s" : ""} in 6 months
             </CardTitle>
           </CardHeader>
           <div className="overflow-x-auto">
@@ -298,7 +298,7 @@ async function OutlookContent() {
                   return (
                     <tr key={i} className="border-b last:border-0 hover:bg-slate-50/40">
                       <td className="px-4 py-2.5 font-medium text-slate-800">{a.name}</td>
-                      <td className="px-4 py-2.5 text-slate-600">{a.role ?? "—"}</td>
+                      <td className="px-4 py-2.5 text-slate-600">{a.role ?? "-"}</td>
                       <td className="px-4 py-2.5 text-slate-700">
                         {a.resignationDate.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
                       </td>
@@ -327,7 +327,7 @@ async function OutlookContent() {
               : "bg-red-50 text-red-700 border-red-200",
             )}
           >
-            {coverage.level} — {coverage.percentage}% coverage
+            {coverage.level} - {coverage.percentage}% coverage
           </Badge>
         </CardHeader>
         <CardContent className="px-5 py-4">
@@ -340,7 +340,7 @@ async function OutlookContent() {
               ))}
             </div>
           ) : (
-            <p className="text-xs text-green-700">All data quality checks pass — forecast confidence is high.</p>
+            <p className="text-xs text-green-700">All data quality checks pass - forecast confidence is high.</p>
           )}
         </CardContent>
       </Card>

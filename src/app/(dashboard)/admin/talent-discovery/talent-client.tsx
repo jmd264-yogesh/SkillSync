@@ -18,7 +18,7 @@ import { COMPETENCY_LABEL, type CompetencyLevel } from "@/lib/constants";
 
 function levelLabel(avg: number): string {
   const clamped = Math.min(5, Math.max(1, Math.round(avg))) as CompetencyLevel;
-  return COMPETENCY_LABEL[clamped] ?? "—";
+  return COMPETENCY_LABEL[clamped] ?? "-";
 }
 import type { SkillCategory } from "@prisma/client";
 
@@ -311,7 +311,7 @@ export function TalentClient({ options, demandProfile }: TalentClientProps) {
                   <BarChart2 className="h-4 w-4" />
                   Skill Supply vs Demand
                   <span className="text-xs text-muted-foreground font-normal ml-1">
-                    — ranked by project headcount demand (active + planning projects)
+                    - ranked by project headcount demand (active + planning projects)
                   </span>
                 </CardTitle>
               </CardHeader>
@@ -399,7 +399,7 @@ export function TalentClient({ options, demandProfile }: TalentClientProps) {
                               </p>
                             </>
                           ) : (
-                            <span className="text-sm text-muted-foreground">—</span>
+                            <span className="text-sm text-muted-foreground">-</span>
                           )}
                         </div>
 
@@ -413,7 +413,7 @@ export function TalentClient({ options, demandProfile }: TalentClientProps) {
                               </p>
                             </>
                           ) : (
-                            <span className="text-sm text-muted-foreground">—</span>
+                            <span className="text-sm text-muted-foreground">-</span>
                           )}
                         </div>
 

@@ -3,10 +3,10 @@ import type { MatchResult } from "@/server/services/matching.service";
 
 const SYSTEM = `You are a resource-planning analyst at a professional-services firm.
 Explain why an employee fits (or doesn't fit) a pipeline project so a Resource Manager can defend the recommendation.
-You are given PRE-COMPUTED scores on distinct dimensions — skill, competency, experience depth, availability, and COE alignment.
+You are given PRE-COMPUTED scores on distinct dimensions - skill, competency, experience depth, availability, and COE alignment.
 Never change the numbers. In 2–4 sentences: name the strongest dimension, call out the biggest risk, mention COE/experience
 alignment if relevant, and note any risk flags (GHOST, SHADOW, LEAVER, OVER_ALLOCATED, UNDER_LEVELLED).
-Treat skill and competency as separate — a strong coder with weak stakeholder competency must be described as such.`;
+Treat skill and competency as separate - a strong coder with weak stakeholder competency must be described as such.`;
 
 export interface ExplainMatchParams {
   projectName: string;
@@ -34,7 +34,7 @@ export async function explainMatch(params: ExplainMatchParams): Promise<string> 
 
   const coeStr =
     coeAligned !== undefined
-      ? `\nCOE Alignment: ${coeAligned ? `Yes — ${coeName ?? "matched"}` : "No"}`
+      ? `\nCOE Alignment: ${coeAligned ? `Yes - ${coeName ?? "matched"}` : "No"}`
       : "";
 
   const expStr =
@@ -46,8 +46,8 @@ export async function explainMatch(params: ExplainMatchParams): Promise<string> 
     designationGap !== undefined && designationGap !== 0
       ? `\nDesignation Gap: ${
           designationGap > 0
-            ? `+${designationGap} levels (over-levelled — senior resource on junior request)`
-            : `${designationGap} levels (under-levelled — candidate is more junior than requested)`
+            ? `+${designationGap} levels (over-levelled - senior resource on junior request)`
+            : `${designationGap} levels (under-levelled - candidate is more junior than requested)`
         }`
       : "";
 
@@ -57,7 +57,7 @@ export async function explainMatch(params: ExplainMatchParams): Promise<string> 
       : "\nRisk Flags: None";
 
   const userContent = `Project: ${projectName} (${projectCategory})
-Candidate: ${candidate.name} — ${candidate.jobName ?? "Unknown Role"}
+Candidate: ${candidate.name} - ${candidate.jobName ?? "Unknown Role"}
 Match Score: ${candidate.matchScore}/100
 Skill Score: ${candidate.skillScore}/100
 Competency Score: ${candidate.competencyScore}/100${expStr}

@@ -6,15 +6,15 @@ export interface AgentStep {
   isBacktrack?: boolean;
 }
 
-export const GUARDRAIL_NOTE = `CRITICAL CONSTRAINTS — FOLLOW EXACTLY:
+export const GUARDRAIL_NOTE = `CRITICAL CONSTRAINTS - FOLLOW EXACTLY:
 1. NUMBERS: You may ONLY state numbers returned by tool results. Never compute, estimate, or invent figures.
-2. PROPOSALS ONLY: You propose staffing plans. You NEVER apply or commit changes — that requires human approval.
+2. PROPOSALS ONLY: You propose staffing plans. You NEVER apply or commit changes - that requires human approval.
 3. BOUNDED: If you cannot complete in the allotted rounds, return your best partial plan and state what is missing.
 4. CITE SOURCES: Every numeric claim must reference the tool that returned it.`;
 
 /**
  * Checks if any number in agent output is absent from all tool result summaries.
- * Heuristic guard — flags potential hallucinations for the caller to handle.
+ * Heuristic guard - flags potential hallucinations for the caller to handle.
  */
 export function assertNumbersFromTools(
   text: string,

@@ -121,7 +121,7 @@ function SkillFormModal({
               className="select-field"
               required
             >
-              <option value="">— Select Skill —</option>
+              <option value="">- Select Skill -</option>
               {availableSkills.map((s) => (
                 <option key={s.id} value={s.id}>{s.name} ({s.category})</option>
               ))}

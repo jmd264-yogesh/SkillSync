@@ -261,7 +261,7 @@ export function MatchClient({ pipelineRequests }: MatchClientProps) {
               </SelectTrigger>
               <SelectContent>
                 {filteredRequests.map((r) => {
-                  const label = `${r.sowSigned ? "✓ " : ""}${r.client ?? "Unknown client"} — ${r.requestType ?? "N/A"}${r.cluster ? ` (Cluster ${r.cluster})` : ""}`;
+                  const label = `${r.sowSigned ? "✓ " : ""}${r.client ?? "Unknown client"} - ${r.requestType ?? "N/A"}${r.cluster ? ` (Cluster ${r.cluster})` : ""}`;
                   return (
                     <SelectItem key={r.id} value={r.id}>{label}</SelectItem>
                   );
@@ -275,7 +275,7 @@ export function MatchClient({ pipelineRequests }: MatchClientProps) {
         </CardContent>
       </Card>
 
-      {/* Selected request context — project type + start date + cluster */}
+      {/* Selected request context - project type + start date + cluster */}
       {selected && (
         <Card className="border-0 shadow-sm bg-slate-50">
           <CardContent className="px-4 py-3">

@@ -7,6 +7,7 @@ export const createEmployeeSchema = z.object({
   coeId: z.string().uuid().optional(),
   designationId: z.string().uuid().optional(),
   managerId: z.string().uuid().optional(),
+  clusterId: z.string().uuid().optional(),
 });
 
 export type CreateEmployeeInput = z.infer<typeof createEmployeeSchema>;

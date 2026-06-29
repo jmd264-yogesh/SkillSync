@@ -1,21 +1,21 @@
 /**
- * excel-export.service.ts  —  Resourcing CoLab export engine  (v2)
+ * excel-export.service.ts  -  Resourcing CoLab export engine  (v2)
  *
  * Produces the "Pipeline Resource Plan" workbook:
- *   Sheet 1: Pipeline Resource Plan  — source rows + 14 appended columns
- *   Sheet 2: Alternates              — top-3 alternatives per request
- *   Sheet 3: Summary                 — portfolio stats + full methodology notes
+ *   Sheet 1: Pipeline Resource Plan  - source rows + 14 appended columns
+ *   Sheet 2: Alternates              - top-3 alternatives per request
+ *   Sheet 3: Summary                 - portfolio stats + full methodology notes
  *
  * ── Scoring dimensions (v2, 7 factors, sum = 1.0) ────────────────────────────
- *   Skill Coverage + Depth   0.32  — required-skill coverage × proficiency level
- *   Consulting Competency    0.22  — avg of 5 behaviour scores (1-5 scale)
- *   Experience Depth         0.08  — skill-level depth proxy for years of experience
- *   Availability Fit         0.18  — WINDOW-AWARE free capacity in request period;
+ *   Skill Coverage + Depth   0.32  - required-skill coverage × proficiency level
+ *   Consulting Competency    0.22  - avg of 5 behaviour scores (1-5 scale)
+ *   Experience Depth         0.08  - skill-level depth proxy for years of experience
+ *   Availability Fit         0.18  - WINDOW-AWARE free capacity in request period;
  *                                    rolling-off bonus +15 pts
- *   Billability Fit          0.10  — low current billability = high cost-recovery opportunity
- *   Evidence Strength        0.06  — certifications + project-doc tech overlap
+ *   Billability Fit          0.10  - low current billability = high cost-recovery opportunity
+ *   Evidence Strength        0.06  - certifications + project-doc tech overlap
  *                                    + role-history match on prior allocations
- *   COE Alignment            0.04  — employee COE matches skillset/solution domain
+ *   COE Alignment            0.04  - employee COE matches skillset/solution domain
  *
  * ── Selection & conflict resolution ─────────────────────────────────────────
  *   Processing order:  Priority (High/Critical) → SOW-Signed → likelyStart ASC
@@ -25,16 +25,16 @@
  *   Leaver filter:     employees resigning ≤60 days are excluded from active pool
  *
  * ── Risk flags ───────────────────────────────────────────────────────────────
- *   GHOST          — allocated but logging no timesheet hours (−25 pts availability)
- *   SHADOW         — logging hours without formal allocation (team-health signal)
- *   LEAVER         — resignation ≤60 days, excluded from pool, signal = HIRE
- *   OVER_ALLOCATED — current utilisation > 100%
- *   UNDER_LEVELLED — designation ≥2 grades below requested role (−15 pts skill)
+ *   GHOST          - allocated but logging no timesheet hours (−25 pts availability)
+ *   SHADOW         - logging hours without formal allocation (team-health signal)
+ *   LEAVER         - resignation ≤60 days, excluded from pool, signal = HIRE
+ *   OVER_ALLOCATED - current utilisation > 100%
+ *   UNDER_LEVELLED - designation ≥2 grades below requested role (−15 pts skill)
  *
  * ── Output columns ───────────────────────────────────────────────────────────
- *   Original cols 0–21 (pipeline xlsx) — fills cols 16, 17, 19 (Resource Recommended,
+ *   Original cols 0–21 (pipeline xlsx) - fills cols 16, 17, 19 (Resource Recommended,
  *     % Available, Skillset Match)
- *   Appended cols 22–35 (14 new cols) — Employee ID, Match Score, Skill Score,
+ *   Appended cols 22–35 (14 new cols) - Employee ID, Match Score, Skill Score,
  *     Competency Score, Experience Score, Availability Score, COE Alignment,
  *     Signal, Risk Flags, Recommended Action, Unmet Skills, Plan, AI Rationale, Confidence
  */
@@ -55,7 +55,7 @@ const SOURCE_SHEET = "Forecast";
 // ── Column index map ──────────────────────────────────────────────────────────
 /** All column positions within the output workbook (0-indexed). */
 const C = {
-  // Original pipeline xlsx columns (22 cols — 0 through 21)
+  // Original pipeline xlsx columns (22 cols - 0 through 21)
   CLUSTER: 0,
   REQUEST_RECEIVED: 1,
   ORIG_START: 2,
@@ -78,16 +78,16 @@ const C = {
   SKILLSET_MATCH: 19,       // ← FILL
   SOW_SIGNED: 20,
   COMMENTS: 21,
-  // Appended value-add columns (14 cols — 22 through 35)
+  // Appended value-add columns (14 cols - 22 through 35)
   EMPLOYEE_ID: 22,
   MATCH_SCORE: 23,
   SKILL_SCORE: 24,
   COMPETENCY_SCORE: 25,
-  EXPERIENCE_SCORE: 26,   // NEW — experience depth proxy
+  EXPERIENCE_SCORE: 26,   // NEW - experience depth proxy
   AVAILABILITY_SCORE: 27, // window-aware %
-  COE_ALIGNMENT: 28,      // NEW — COE match flag
+  COE_ALIGNMENT: 28,      // NEW - COE match flag
   SIGNAL: 29,
-  RISK_FLAGS: 30,          // NEW — GHOST / SHADOW / LEAVER / etc
+  RISK_FLAGS: 30,          // NEW - GHOST / SHADOW / LEAVER / etc
   ACTION: 31,
   UNMET_SKILLS: 32,
   PLAN: 33,
@@ -230,7 +230,7 @@ function applyStyle(ws: XLSX.WorkSheet, r: number, c: number, style: CellStyle) 
 }
 
 // ── Extended MatchResult ──────────────────────────────────────────────────────
-/** v2 match result — extends base MatchResult with all new scoring dimensions. */
+/** v2 match result - extends base MatchResult with all new scoring dimensions. */
 export interface MatchResultV2 extends MatchResult {
   experienceScore: number;
   coeAlignmentScore: number;
@@ -260,7 +260,7 @@ async function fetchAllEmployees() {
       },
       competencies: { select: { score: true } },
       allocations: {
-        // Fetch ALL allocations — COMPLETED ones give project-breadth experience signals.
+        // Fetch ALL allocations - COMPLETED ones give project-breadth experience signals.
         // computeWindowAvailability() already skips COMPLETED; we filter in-memory below.
         include: {
           project: {
@@ -278,7 +278,7 @@ async function fetchAllEmployees() {
       utilisationSnapshots: { orderBy: { weekStart: "desc" }, take: 4 },
       experienceDocs: {
         // ETL now creates "ETL-SkillProfile" docs (EXTRACTED) for every employee from
-        // File 05 — these carry actual experience-years data per skill (Gap 8 fix).
+        // File 05 - these carry actual experience-years data per skill (Gap 8 fix).
         where: { extractionStatus: { in: ["EXTRACTED", "APPLIED"] } },
         select: { techStack: true, extractedSkills: true },
       },
@@ -340,10 +340,10 @@ function computeWindowAvailability(
 
 // ── Experience depth score ─────────────────────────────────────────────────────
 // Uses three signals blended together:
-//   50% — actual years-of-experience per skill from ETL-populated ExperienceDoc
+//   50% - actual years-of-experience per skill from ETL-populated ExperienceDoc
 //           (File 05 Experience column → ingestExperienceDocs ETL step)
-//   25% — validated skill-level depth (validatedLevel / 5)
-//   25% — tenure from Employee.dateOfJoin (capped at 5 years = max score)
+//   25% - validated skill-level depth (validatedLevel / 5)
+//   25% - tenure from Employee.dateOfJoin (capped at 5 years = max score)
 // Bonus: +10 pts per skill where validatedLevel exceeds the required level.
 type ExtractedSkillEntry = { name: string; years?: number; score?: number };
 
@@ -430,7 +430,7 @@ function computeExperienceScore(
 }
 
 // ── COE alignment ─────────────────────────────────────────────────────────────
-// Multi-signal check — gap 7 fix (tech_coe / proposition_coe previously unused).
+// Multi-signal check - gap 7 fix (tech_coe / proposition_coe previously unused).
 // Scoring: 0–100 across up to 4 signals.
 //  Signal A (weight 2): employee COE name appears in pipeline skillset/solution text
 //  Signal B (weight 1): active project's techCoe or propositionCoe overlaps request
@@ -653,7 +653,7 @@ function scoreEmployee(
   }
 
   // Project breadth bonus: more distinct delivery projects = proven, versatile resource.
-  // Uses ALL allocations (including completed) — this is the entire track record.
+  // Uses ALL allocations (including completed) - this is the entire track record.
   const distinctProjectCount = new Set(emp.allocations.map((a) => a.projectId)).size;
   expBoost += Math.min(distinctProjectCount * 4, 20); // max +20 pts for 5+ projects
 
@@ -681,7 +681,7 @@ function scoreEmployee(
     effectiveAvailabilityFit = Math.max(0, availabilityFit - GHOST_AVAIL_PENALTY);
   }
 
-  // ── Weighted Match Score (v2 — 7 dimensions) ───────────────────────────────
+  // ── Weighted Match Score (v2 - 7 dimensions) ───────────────────────────────
   const matchScore = Math.round(
     skillScore               * MATCH_WEIGHTS_V2.skill +
     competencyScore          * MATCH_WEIGHTS_V2.competency +
@@ -695,7 +695,7 @@ function scoreEmployee(
   // ── Signal ─────────────────────────────────────────────────────────────────
   let signal: MatchSignal;
   if (riskFlags.includes("LEAVER")) {
-    // Leavers should never be deployed — force external hire signal
+    // Leavers should never be deployed - force external hire signal
     signal = "HIRE";
   } else if (!hasSkillFilter) {
     signal = availableFTE > 0.5 ? "REDEPLOY" : availableFTE > 0.1 ? "PARTIAL_HIRE" : "HIRE";
@@ -786,10 +786,10 @@ function textToRequiredSkills(
 
 // ── Availability tier (pool selection hierarchy) ───────────────────────────────
 function availabilityTier(fteAvailable: number): 0 | 1 | 2 | 3 {
-  if (fteAvailable > 0.5) return 3;  // >50% free — first pick
-  if (fteAvailable > 0.2) return 2;  // 20–50% — partial, coordinate handoff
-  if (fteAvailable > 0)   return 1;  // <20%   — marginal, confirm commitment
-  return 0;                           // 0%     — fully allocated, release required
+  if (fteAvailable > 0.5) return 3;  // >50% free - first pick
+  if (fteAvailable > 0.2) return 2;  // 20–50% - partial, coordinate handoff
+  if (fteAvailable > 0)   return 1;  // <20%   - marginal, confirm commitment
+  return 0;                           // 0%     - fully allocated, release required
 }
 
 // ── Derived column helpers ────────────────────────────────────────────────────
@@ -815,29 +815,29 @@ function toAction(
   const roleTag  = roleFiltered
     ? ` [${parsed.display}]`
     : fallbackUsed
-    ? " [role unrecognised — any grade]"
+    ? " [role unrecognised - any grade]"
     : "";
   const riskNote     = match.riskFlags.length > 0 ? ` ⚠ ${match.riskFlags.join(", ")}` : "";
-  const sharedNote   = poolExhausted ? " (shared — pool exhausted)" : "";
+  const sharedNote   = poolExhausted ? " (shared - pool exhausted)" : "";
   const coeTag       = match.coeAligned ? ` ✓ COE:${match.empCoeName ?? ""}` : "";
-  const rollingTag   = match.isRollingOff ? " (rolling off — natural window)" : "";
+  const rollingTag   = match.isRollingOff ? " (rolling off - natural window)" : "";
 
   if (match.signal === "HIRE") {
-    return `Hire externally${roleTag} — no suitable internal candidate${riskNote}`;
+    return `Hire externally${roleTag} - no suitable internal candidate${riskNote}`;
   }
   if (match.isRollingOff) {
-    return `Rolling off${roleTag} — ${match.name} naturally free at window start${coeTag}${riskNote}${sharedNote}`;
+    return `Rolling off${roleTag} - ${match.name} naturally free at window start${coeTag}${riskNote}${sharedNote}`;
   }
   if (tier === 3) {
-    return `Redeploy ${match.name}${roleTag} — ${availPct}% free now${coeTag}${riskNote}${sharedNote}`;
+    return `Redeploy ${match.name}${roleTag} - ${availPct}% free now${coeTag}${riskNote}${sharedNote}`;
   }
   if (tier === 2) {
-    return `Redeploy ${match.name}${roleTag} — ${availPct}% free, coordinate handoff${coeTag}${riskNote}${sharedNote}`;
+    return `Redeploy ${match.name}${roleTag} - ${availPct}% free, coordinate handoff${coeTag}${riskNote}${sharedNote}`;
   }
   if (tier === 1) {
-    return `Redeploy ${match.name}${roleTag} — ${availPct}% free, confirm commitment${coeTag}${rollingTag}${riskNote}${sharedNote}`;
+    return `Redeploy ${match.name}${roleTag} - ${availPct}% free, confirm commitment${coeTag}${rollingTag}${riskNote}${sharedNote}`;
   }
-  return `${match.name}${roleTag} — currently allocated (${availPct}% free), release required${coeTag}${riskNote}${sharedNote}`;
+  return `${match.name}${roleTag} - currently allocated (${availPct}% free), release required${coeTag}${riskNote}${sharedNote}`;
 }
 
 function toPlan(
@@ -938,7 +938,7 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
   const activeCandidates = allEmployees.filter((emp) => !isLeavingSoon(emp));
   const leaverCount = allEmployees.length - activeCandidates.length;
 
-  // ── Step 3: Build requestsWithContext — join DB rows to xlsx rows ───────────
+  // ── Step 3: Build requestsWithContext - join DB rows to xlsx rows ───────────
   interface RequestContext {
     req: (typeof dbRequests)[number];
     srcRow: unknown[];       // original xlsx row (padded to 22 cols)
@@ -959,7 +959,7 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
     const srcRow = [...(dataRows[i] as unknown[])];
     while (srcRow.length < 22) srcRow.push(null);
 
-    // Priority is stored only in the source xlsx — DB PipelineRequest has no priority field
+    // Priority is stored only in the source xlsx - DB PipelineRequest has no priority field
     const priorityLabel = String(srcRow[C.PRIORITY] ?? "").trim() || null;
     const priorityOrder = PRIORITY_ORDER[priorityLabel?.toLowerCase() ?? ""] ?? 2;
 
@@ -1026,7 +1026,7 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
     // Widen to full pool when role is recognised but nobody holds that title
     const candidatePool = rolePool.length > 0 ? rolePool : activeCandidates;
 
-    // Score every candidate (in-memory — no extra DB calls)
+    // Score every candidate (in-memory - no extra DB calls)
     const allScored: MatchResultV2[] = candidatePool.map((emp) =>
       scoreEmployee(emp, reqSkills, scoreOpts),
     );
@@ -1059,7 +1059,7 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
       }
     }
 
-    // Role pool exhausted — expand to full active pool once
+    // Role pool exhausted - expand to full active pool once
     if (!picked && roleFiltered) {
       const fullScored = activeCandidates
         .map((emp) => scoreEmployee(emp, reqSkills, scoreOpts))
@@ -1079,7 +1079,7 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
       }
     }
 
-    // True pool exhaustion — recommend best regardless (shared resource, clearly flagged)
+    // True pool exhaustion - recommend best regardless (shared resource, clearly flagged)
     if (!picked) {
       picked = selectionOrder[0] ?? null;
       poolExhausted = true;
@@ -1102,7 +1102,7 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
           picked.coeAligned,
         ),
         rationale: "",
-        confidence: "—",
+        confidence: "-",
         parsed,
         roleFiltered,
         fallbackUsed,
@@ -1174,7 +1174,7 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
       asgn.rationale  = `${m.name} scores ${m.matchScore}/100. Strongest: ${dim}.${coeNote}${expNote} Risk: ${risk}.${riskNote}`;
       asgn.confidence =
         m.signal === "HIRE"
-          ? "N/A — External Hire"
+          ? "N/A - External Hire"
           : asgn.poolExhausted
           ? "LOW (Pool Exhausted)"
           : "MEDIUM (deterministic)";
@@ -1216,7 +1216,7 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
           asgn.match.signal,                                                 // 29 Signal
           asgn.match.riskFlags.length > 0                                    // 30 Risk Flags
             ? asgn.match.riskFlags.join(", ")
-            : "—",
+            : "-",
           toAction(                                                           // 31 Recommended Action
             asgn.match,
             asgn.parsed,
@@ -1224,7 +1224,7 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
             asgn.fallbackUsed,
             asgn.poolExhausted,
           ),
-          asgn.match.unmetSkills.join(", ") || "—",                          // 32 Unmet Skills
+          asgn.match.unmetSkills.join(", ") || "-",                          // 32 Unmet Skills
           asgn.plan,                                                         // 33 Plan
           asgn.rationale,                                                    // 34 AI Rationale
           asgn.confidence,                                                   // 35 Confidence
@@ -1273,7 +1273,7 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
     if (matchSt) applyStyle(ws, r, C.SKILLSET_MATCH, matchSt);
 
     if (coeAlignment?.startsWith("✓")) applyStyle(ws, r, C.COE_ALIGNMENT, S.coeGood);
-    if (riskFlags && riskFlags !== "—") applyStyle(ws, r, C.RISK_FLAGS, S.risk);
+    if (riskFlags && riskFlags !== "-") applyStyle(ws, r, C.RISK_FLAGS, S.risk);
   }
 
   // Column widths (36 columns)
@@ -1315,16 +1315,16 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
       const emp = allEmployees.find((e) => e.id === m.employeeId);
       altRows.push([
         i + 1,
-        row[C.CLIENT] ?? "—",
-        ctx?.priorityLabel ?? "—",
+        row[C.CLIENT] ?? "-",
+        ctx?.priorityLabel ?? "-",
         row[C.SOW_SIGNED] ?? "No",
-        row[C.SKILLSET] ?? "—",
+        row[C.SKILLSET] ?? "-",
         rank + 1,
         m.employeeCode,
         m.name,
-        m.jobName ?? "—",
-        emp?.designation?.name ?? "—",
-        (m as MatchResultV2).empCoeName ?? "—",
+        m.jobName ?? "-",
+        emp?.designation?.name ?? "-",
+        (m as MatchResultV2).empCoeName ?? "-",
         m.matchScore,
         m.skillScore,
         m.competencyScore,
@@ -1332,8 +1332,8 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
         `${Math.round(m.availableFTE * 100)}%`,
         (m as MatchResultV2).coeAligned ? "Yes" : "No",
         m.signal,
-        (m as MatchResultV2).riskFlags.join(", ") || "—",
-        m.unmetSkills.join(", ") || "—",
+        (m as MatchResultV2).riskFlags.join(", ") || "-",
+        m.unmetSkills.join(", ") || "-",
       ]);
     });
   }
@@ -1380,7 +1380,7 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
 
   const now = new Date();
   const summaryRows: unknown[][] = [
-    ["RESOURCING EXPORT SUMMARY — v2 Enhanced Matching (7-Dimension Score)", null],
+    ["RESOURCING EXPORT SUMMARY - v2 Enhanced Matching (7-Dimension Score)", null],
     [`Generated: ${now.toLocaleString("en-GB")}`, null],
     [],
     ["PORTFOLIO OVERVIEW", null],
@@ -1392,8 +1392,8 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
     ...[...prioCounts.entries()].map(([p, n]) => [p, n]),
     [],
     ["MATCHING RESULTS", null],
-    ["Covered Internally — Redeploy",     redeployCount],
-    ["Covered Partially — Partial Hire",  partialCount],
+    ["Covered Internally - Redeploy",     redeployCount],
+    ["Covered Partially - Partial Hire",  partialCount],
     ["External Hire Required",            hireCount],
     ["No Match Found",                    unmatched],
     ["Internal Coverage %",              `${coveredPct}%`],
@@ -1404,26 +1404,26 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
     [],
     ["CANDIDATE POOL HEALTH", null],
     ["Total Employees",                   allEmployees.length],
-    [`Excluded — Leavers (≤${LEAVER_HORIZON_DAYS} days)`, leaverCount],
+    [`Excluded - Leavers (≤${LEAVER_HORIZON_DAYS} days)`, leaverCount],
     ["Active Candidates",                 activeCandidates.length],
     [],
     ["TOP ROLES IN DEMAND", null],
     ...topRoles.map(([role, count]) => [role, count]),
     [],
-    ["SCORING METHODOLOGY — v2 (7 Dimensions, sum = 100%)", null],
-    ["Skill Coverage + Depth",   "32% — required-skill coverage × proficiency level; bidirectional skill matching catches SubSkill composites (e.g. 'Python – Data Analysis' matched by 'Python' in request)"],
-    ["Consulting Competency",    "22% — average of 5 behaviour scores: Stakeholder Mgmt, Advisory, Techno-Functional, Communication, Ambiguity Navigation"],
-    ["Experience Depth",         "8%  — 3-signal blend: 50% actual skill-years (from File 05 Experience column via ETL) + 25% skill depth (validatedLevel/5) + 25% tenure; +10 pts when level exceeds requirement; SubSkill prefix matching for years lookup"],
-    ["Availability Fit",         `18% — window-aware free capacity within likelyStart→end window; project-only timesheets used (leave/admin excluded); rolling-off bonus +${ROLLING_OFF_BONUS_PTS} pts`],
-    ["Billability Fit",          "10% — low current billability = high cost-recovery opportunity"],
-    ["Evidence Strength",        "6%  — certs × 10 pts + File 05 skill portfolio overlap + role-history match (alloc.role or current jobName) +15 pts + project breadth bonus (distinct project count × 4, max +20 pts)"],
-    ["COE Alignment",            "4%  — 3 signals: employee COE in request text (×2), active project techCoe/propositionCoe overlaps request (×1), employee COE matches their active project domain (×1)"],
+    ["SCORING METHODOLOGY - v2 (7 Dimensions, sum = 100%)", null],
+    ["Skill Coverage + Depth",   "32% - required-skill coverage × proficiency level; bidirectional skill matching catches SubSkill composites (e.g. 'Python – Data Analysis' matched by 'Python' in request)"],
+    ["Consulting Competency",    "22% - average of 5 behaviour scores: Stakeholder Mgmt, Advisory, Techno-Functional, Communication, Ambiguity Navigation"],
+    ["Experience Depth",         "8%  - 3-signal blend: 50% actual skill-years (from File 05 Experience column via ETL) + 25% skill depth (validatedLevel/5) + 25% tenure; +10 pts when level exceeds requirement; SubSkill prefix matching for years lookup"],
+    ["Availability Fit",         `18% - window-aware free capacity within likelyStart→end window; project-only timesheets used (leave/admin excluded); rolling-off bonus +${ROLLING_OFF_BONUS_PTS} pts`],
+    ["Billability Fit",          "10% - low current billability = high cost-recovery opportunity"],
+    ["Evidence Strength",        "6%  - certs × 10 pts + File 05 skill portfolio overlap + role-history match (alloc.role or current jobName) +15 pts + project breadth bonus (distinct project count × 4, max +20 pts)"],
+    ["COE Alignment",            "4%  - 3 signals: employee COE in request text (×2), active project techCoe/propositionCoe overlaps request (×1), employee COE matches their active project domain (×1)"],
     [],
     ["DATA SIGNAL IMPROVEMENTS (v2.1)", null],
     ["Experience years (File 05)", "ETL now parses 'Experience' column ('1–3 yrs', '5+', '<1') → stored in ProjectExperienceDoc.extractedSkills JSON; used in Experience Depth dimension"],
     ["Manager chain (File 01)",   "ETL two-pass links Employee.managerId from manager_id column; manager context used in team-level reporting"],
     ["Allocation role (File 03)", "ETL stores employee.jobName as ProjectAllocation.role at allocation time; enables role-history boost in Evidence dimension"],
-    ["Timesheet filtering",       "deriveUtilisation() now filters to projectId IS NOT NULL — leave, training, admin entries no longer inflate utilisation"],
+    ["Timesheet filtering",       "deriveUtilisation() now filters to projectId IS NOT NULL - leave, training, admin entries no longer inflate utilisation"],
     ["COE matching (Files 02-03)","computeCoeAlignment() reads project.techCoe + project.propositionCoe from all allocations (incl. completed) for multi-signal COE scoring"],
     ["SubSkill matching",         "textToRequiredSkills() reverse-matches: keyword 'Python' in request matches skill 'Python – Data Analysis' from ExperienceDoc"],
     [],
@@ -1434,11 +1434,11 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
     ["Leaver exclusion",         `Employees with resignation date ≤${LEAVER_HORIZON_DAYS} days from today excluded from active pool`],
     [],
     ["RISK FLAG LEGEND", null],
-    ["GHOST",          `Allocated to project but logging zero timesheet hours — unreliable capacity; −${GHOST_AVAIL_PENALTY} pts availability`],
-    ["SHADOW",         "Logging hours without a formal allocation — team health signal, review resourcing records"],
-    ["LEAVER",         `Resignation ≤${LEAVER_HORIZON_DAYS} days — excluded from active pool; signal forced to HIRE`],
+    ["GHOST",          `Allocated to project but logging zero timesheet hours - unreliable capacity; −${GHOST_AVAIL_PENALTY} pts availability`],
+    ["SHADOW",         "Logging hours without a formal allocation - team health signal, review resourcing records"],
+    ["LEAVER",         `Resignation ≤${LEAVER_HORIZON_DAYS} days - excluded from active pool; signal forced to HIRE`],
     ["OVER_ALLOCATED", "Current utilisation > 100% (working beyond capacity)"],
-    ["UNDER_LEVELLED", `Designation ≥2 grades below requested role — −${UNDER_LEVEL_SKILL_PENALTY} pts skill score`],
+    ["UNDER_LEVELLED", `Designation ≥2 grades below requested role - −${UNDER_LEVEL_SKILL_PENALTY} pts skill score`],
     [],
     ["AI RATIONALE", null],
     ["Applied to",   `Top ${Math.min(maxAiCalls, redeployCount)} REDEPLOY matches (5 s timeout, batches of 3)`],
@@ -1446,14 +1446,14 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
     ["Fallback",     "Deterministic rationale using dimension scores when AI is unavailable or times out"],
     [],
     ["DATA SOURCES", null],
-    ["File 01", "employee_details.csv — employee identity, job, location, manager_id, resignation dates"],
-    ["File 02", "project_details.csv — project type, status, tech/proposition COE"],
-    ["File 03", "Project_Allocation_Details.csv — allocation %, dates, role, resourcing status"],
-    ["File 04", "timesheet_details_2026.csv — hours, billability (→ UtilisationSnapshot, project-only)"],
-    ["File 05", "Skill_Data.xlsx — employee skills, validated scores, experience years, SubSkill detail"],
-    ["File 06", "Competency_Details.xlsx — 5 consulting-behaviour scores per employee"],
-    ["File 07", "Pipeline_Details.xlsx — pipeline demand: skillset, role, priority, SOW"],
-    ["File 09", "Project_Weekly_Status_Details.csv — scope/schedule/quality/csat/team RAG"],
+    ["File 01", "employee_details.csv - employee identity, job, location, manager_id, resignation dates"],
+    ["File 02", "project_details.csv - project type, status, tech/proposition COE"],
+    ["File 03", "Project_Allocation_Details.csv - allocation %, dates, role, resourcing status"],
+    ["File 04", "timesheet_details_2026.csv - hours, billability (→ UtilisationSnapshot, project-only)"],
+    ["File 05", "Skill_Data.xlsx - employee skills, validated scores, experience years, SubSkill detail"],
+    ["File 06", "Competency_Details.xlsx - 5 consulting-behaviour scores per employee"],
+    ["File 07", "Pipeline_Details.xlsx - pipeline demand: skillset, role, priority, SOW"],
+    ["File 09", "Project_Weekly_Status_Details.csv - scope/schedule/quality/csat/team RAG"],
     ["Derived", "ShadowFlag (GHOST/SHADOW from allocation vs timesheet join), UtilisationSnapshot, RoleMixTemplate, ProjectExperienceDoc (ETL-SkillProfile per employee)"],
   ];
 

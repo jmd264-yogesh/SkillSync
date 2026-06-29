@@ -334,11 +334,11 @@ export function QuestionnaireClient({ skills, designations, coes }: Props) {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="1">1 — Beginner</SelectItem>
-                      <SelectItem value="2">2 — Basic</SelectItem>
-                      <SelectItem value="3">3 — Intermediate</SelectItem>
-                      <SelectItem value="4">4 — Advanced</SelectItem>
-                      <SelectItem value="5">5 — Expert</SelectItem>
+                      <SelectItem value="1">1 - Beginner</SelectItem>
+                      <SelectItem value="2">2 - Basic</SelectItem>
+                      <SelectItem value="3">3 - Intermediate</SelectItem>
+                      <SelectItem value="4">4 - Advanced</SelectItem>
+                      <SelectItem value="5">5 - Expert</SelectItem>
                     </SelectContent>
                   </Select>
                 )}

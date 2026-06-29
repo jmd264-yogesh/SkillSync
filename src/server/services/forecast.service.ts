@@ -151,8 +151,8 @@ export async function forecastNewProjects(params: {
   if (totalShortfall === 0) {
     decision = redeployCount > 0 ? "YES_WITH_REDEPLOYMENTS" : "YES";
     decisionDetail = redeployCount > 0
-      ? `Yes — ${redeployCount} redeployment(s) recommended to cover demand.`
-      : "Yes — sufficient supply available with no redeployments needed.";
+      ? `Yes - ${redeployCount} redeployment(s) recommended to cover demand.`
+      : "Yes - sufficient supply available with no redeployments needed.";
   } else {
     decision = "NO_HIRE_REQUIRED";
     const shortRoles = byRole.filter((r) => r.shortfall > 0).map((r) => `${r.role} (${r.shortfall.toFixed(1)} FTE)`);

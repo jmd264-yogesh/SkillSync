@@ -54,7 +54,7 @@ export async function computeDataCoverage(): Promise<ConfidenceResult> {
   // Check 4: project category coverage
   const catCov = totalProjects > 0 ? projectsWithRoleMix / totalProjects : 0;
   score += catCov; checks++;
-  if (catCov < 0.8) improvements.push(`${Math.round((1 - catCov) * 100)}% of projects mapped to OTHER category — update type_of_project`);
+  if (catCov < 0.8) improvements.push(`${Math.round((1 - catCov) * 100)}% of projects mapped to OTHER category - update type_of_project`);
 
   const percentage = checks > 0 ? Math.round((score / checks) * 100) : 0;
   const level: ConfidenceLevel = percentage >= 80 ? "HIGH" : percentage >= 50 ? "MEDIUM" : "LOW";

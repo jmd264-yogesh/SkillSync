@@ -166,9 +166,9 @@ export default async function MyReportPage() {
         </div>
         <div className="flex flex-wrap gap-2.5 mt-5 pt-5 border-t border-slate-100">
           {[
-            { icon: Building2, label: "COE", value: employee.coe?.name ?? "—" },
-            { icon: Briefcase, label: "Designation", value: employee.designation?.name ?? "—" },
-            { icon: Users, label: "Manager", value: employee.manager?.name ?? "—" },
+            { icon: Building2, label: "COE", value: employee.coe?.name ?? "-" },
+            { icon: Briefcase, label: "Designation", value: employee.designation?.name ?? "-" },
+            { icon: Users, label: "Manager", value: employee.manager?.name ?? "-" },
           ].map((item) => (
             <div key={item.label} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200">
               <item.icon className="h-3.5 w-3.5 text-primary" />

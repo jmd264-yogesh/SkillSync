@@ -114,7 +114,7 @@ export function UserFormDialog({
                 defaultValue={user?.employeeId ?? ""}
                 className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               >
-                <option value="">— No Employee Link —</option>
+                <option value="">- No Employee Link -</option>
                 {employees.map((emp) => (
                   <option key={emp.id} value={emp.id}>
                     {emp.name} ({emp.employeeCode})

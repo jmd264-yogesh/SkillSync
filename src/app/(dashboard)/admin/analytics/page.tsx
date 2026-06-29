@@ -1,35 +1,15 @@
 import { db } from "@/lib/db";
 import { PageHeader } from "@/components/shared/page-header";
 import { AnalyticsClient } from "./analytics-client";
-import { computeReadiness } from "@/server/services/readiness.service";
 
 export default async function AnalyticsPage() {
   const [
-    totalEmployees,
-    totalSkillsMapped,
-    totalCoes,
-    totalDesignations,
+    employees,
     coes,
     designations,
-    approvals,
     recentMappingsRaw,
-    allEmployeesWithProfiles,
+    totalProjects,
   ] = await Promise.all([
-    db.employee.count(),
-    db.employeeSkill.count(),
-    db.coe.count(),
-    db.designation.count(),
-    db.coe.findMany({ select: { name: true, _count: { select: { employees: true } } } }),
-    db.designation.findMany({ select: { name: true, _count: { select: { employees: true } } } }),
-    db.employeeSkill.groupBy({
-      by: ["status"],
-      _count: { status: true },
-    }),
-    db.employeeSkill.findMany({
-      take: 6,
-      orderBy: { createdAt: "desc" },
-      include: { employee: { select: { name: true } }, skill: { select: { name: true } } },
-    }),
     db.employee.findMany({
       include: {
         coe: {
@@ -46,26 +26,31 @@ export default async function AnalyticsPage() {
         },
         employeeSkills: {
           where: { status: "APPROVED" },
-          select: { skillId: true, validatedLevel: true },
+          select: {
+            skillId: true,
+            validatedLevel: true,
+            skill: { select: { name: true } },
+          },
+        },
+        allocations: {
+          select: {
+            allocation: true,
+            project: { select: { name: true } },
+            startDate: true,
+            endDate: true,
+          },
         },
       },
     }),
+    db.coe.findMany({ select: { id: true, name: true } }),
+    db.designation.findMany({ select: { id: true, name: true } }),
+    db.employeeSkill.findMany({
+      take: 10,
+      orderBy: { createdAt: "desc" },
+      include: { employee: { select: { name: true } }, skill: { select: { name: true } } },
+    }),
+    db.project.count(),
   ]);
-
-  const coeData = coes.map((c) => ({
-    name: c.name,
-    count: c._count.employees,
-  }));
-
-  const designationData = designations.map((d) => ({
-    name: d.name,
-    count: d._count.employees,
-  }));
-
-  const approvalData = approvals.map((a) => ({
-    status: a.status,
-    count: a._count.status,
-  }));
 
   const recentMappings = recentMappingsRaw.map((rm) => ({
     id: rm.id,
@@ -75,62 +60,23 @@ export default async function AnalyticsPage() {
     level: rm.selfAssessedLevel,
   }));
 
-  const readinessScores = allEmployeesWithProfiles
-    .map((emp) => ({
-      name: emp.name,
-      coeId: emp.coeId,
-      coeSkills: emp.coe?.coeSkills ?? [],
-      designationSkills: emp.designation?.designationSkills ?? [],
-      readiness: computeReadiness(emp.coe?.coeSkills ?? [], emp.designation?.designationSkills ?? [], emp.employeeSkills).percentage,
-    }))
-    .filter((e) => e.coeSkills.length > 0 || e.designationSkills.length > 0);
-
-  const orgReadiness =
-    readinessScores.length > 0
-      ? Math.round(readinessScores.reduce((s, e) => s + e.readiness, 0) / readinessScores.length)
-      : 0;
-
-  const employeesWithNoGaps = readinessScores.filter((e) => e.readiness === 100).length;
-
-  const readinessBands = {
-    low: readinessScores.filter((e) => e.readiness < 40).length,
-    medium: readinessScores.filter((e) => e.readiness >= 40 && e.readiness <= 70).length,
-    high: readinessScores.filter((e) => e.readiness > 70).length,
-  };
-
-  const coeReadinessMap = new Map<string, number[]>();
-  for (const emp of allEmployeesWithProfiles) {
-    if (!emp.coe) continue;
-    const score = computeReadiness(emp.coe.coeSkills, emp.designation?.designationSkills ?? [], emp.employeeSkills).percentage;
-    const existing = coeReadinessMap.get(emp.coe.name) ?? [];
-    existing.push(score);
-    coeReadinessMap.set(emp.coe.name, existing);
-  }
-
-  const coeReadinessData = Array.from(coeReadinessMap.entries()).map(([name, scores]) => ({
-    name,
-    readiness: scores.length > 0 ? Math.round(scores.reduce((s, v) => s + v, 0) / scores.length) : 0,
-  }));
-
   return (
     <div>
       <PageHeader
         title="Analytics & Reporting"
-        description="Organization-wide skill insights and workforce metrics"
+        description="Interactive resourcing and skill intelligence dashboard"
       />
       <div className="mt-4">
         <AnalyticsClient
-          metrics={{ totalEmployees, totalSkillsMapped, totalCoes, totalDesignations }}
-          coeData={coeData}
-          designationData={designationData}
-          approvalData={approvalData}
+          employees={employees}
+          coes={coes}
+          designations={designations}
           recentMappings={recentMappings}
-          orgReadiness={orgReadiness}
-          employeesWithNoGaps={employeesWithNoGaps}
-          readinessBands={readinessBands}
-          coeReadinessData={coeReadinessData}
+          totalProjects={totalProjects}
+          aiConfigured={false}
         />
       </div>
     </div>
   );
 }
+

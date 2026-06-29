@@ -48,9 +48,9 @@ MANDATORY SEQUENCE:
    - If safe=false (CONFLICT), do NOT use that person in the safe plan. Try the next candidate.
    - Explicitly note the backtrack in your reasoning.
 4. Call record_plan 2–3 times for distinct variants:
-   - "Plan A — Redeploy-Heavy": maximize redeployments (include risky ones, flag the risk)
-   - "Plan B — Delivery-Safe": only safe redeployments, hire for any conflicting roles
-   - "Plan C — Balanced" (optional): mix of partial hire + partial redeploy
+   - "Plan A - Redeploy-Heavy": maximize redeployments (include risky ones, flag the risk)
+   - "Plan B - Delivery-Safe": only safe redeployments, hire for any conflicting roles
+   - "Plan C - Balanced" (optional): mix of partial hire + partial redeploy
 5. After recording all plans, return a 2-sentence comparison.
 
 ${GUARDRAIL_NOTE}`;
@@ -169,7 +169,7 @@ function buildFallbackPlans(forecast: NewProjectForecast): StaffingPlan[] {
   const redeploys = Math.min(forecast.reallocationCandidates.length, 5);
   return [
     {
-      planName: "Plan A — Available Redeployments",
+      planName: "Plan A - Available Redeployments",
       tradeoffSummary: `Redeploy ${redeploys} available employees; hire ${hires} for residual shortfall.`,
       hireCount: hires,
       redeployCount: redeploys,
@@ -190,7 +190,7 @@ function buildFallbackPlans(forecast: NewProjectForecast): StaffingPlan[] {
 export async function buildStaffingPlans(
   input: { category: ProjectCategory; count: number; start: Date; weeks: number }[],
 ): Promise<StaffingPlanResult> {
-  // Pre-compute demand deterministically — used as context AND as fallback
+  // Pre-compute demand deterministically - used as context AND as fallback
   const fallbackForecast = await forecastNewProjects({ adHoc: input });
   const capturedPlans: StaffingPlan[] = [];
 
@@ -221,8 +221,8 @@ export async function buildStaffingPlans(
         topN: Math.max(topN, 8),
       });
       return candidates.slice(0, topN).map((c) => ({
-        employeeId: c.employeeId,    // UUID — needed for check_health_impact DB lookup
-        employeeCode: c.employeeCode, // business key — for display in plan output
+        employeeId: c.employeeId,    // UUID - needed for check_health_impact DB lookup
+        employeeCode: c.employeeCode, // business key - for display in plan output
         name: c.name,
         role: c.jobName,
         matchScore: c.matchScore,
@@ -306,7 +306,7 @@ export async function buildStaffingPlans(
 ${input.map((i) => `  • ${i.count}× ${i.category}, ${i.weeks}w from ${i.start.toISOString().slice(0, 10)}`).join("\n")}
 
 Pre-computed shortfalls (verify with get_demand):
-${roleLines || "  None detected — call get_demand to confirm."}
+${roleLines || "  None detected - call get_demand to confirm."}
 
 Follow the MANDATORY SEQUENCE. Call record_plan for each distinct plan. Backtrack if check_health_impact returns conflicts.`;
 
@@ -328,7 +328,7 @@ Follow the MANDATORY SEQUENCE. Call record_plan for each distinct plan. Backtrac
   } catch {
     return {
       plans: buildFallbackPlans(fallbackForecast),
-      narrative: "AI planning unavailable — showing deterministic forecast.",
+      narrative: "AI planning unavailable - showing deterministic forecast.",
       trace: [],
       fallbackForecast,
     };

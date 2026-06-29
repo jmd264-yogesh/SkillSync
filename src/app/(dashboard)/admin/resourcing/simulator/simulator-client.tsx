@@ -75,10 +75,10 @@ function PlanCard({ plan }: { plan: StaffingPlan }) {
                     </Badge>
                   </td>
                   <td className="px-3 py-1.5 text-slate-600">
-                    {a.employeeName ?? "— External hire"}
+                    {a.employeeName ?? "- External hire"}
                   </td>
                   <td className="px-3 py-1.5 text-slate-600">
-                    {a.fitScore !== undefined ? `${a.fitScore}%` : "—"}
+                    {a.fitScore !== undefined ? `${a.fitScore}%` : "-"}
                   </td>
                   <td className="px-3 py-1.5 text-amber-700 text-[10px]">
                     {a.riskNote ?? ""}
@@ -90,7 +90,7 @@ function PlanCard({ plan }: { plan: StaffingPlan }) {
         </div>
       )}
 
-      {/* Apply button — disabled (propose only) */}
+      {/* Apply button - disabled (propose only) */}
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger>
@@ -99,7 +99,7 @@ function PlanCard({ plan }: { plan: StaffingPlan }) {
             </Button>
           </TooltipTrigger>
           <TooltipContent side="right">
-            <p className="text-xs">Human review required — proposals only</p>
+            <p className="text-xs">Human review required - proposals only</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -248,7 +248,7 @@ export function SimulatorClient() {
           </div>
           {loading && (
             <p className="text-xs text-muted-foreground">
-              Agent is planning — checking candidates and conflict-testing redeployments…
+              Agent is planning - checking candidates and conflict-testing redeployments…
             </p>
           )}
           {error && <p className="text-xs text-red-600">{error}</p>}
@@ -279,7 +279,7 @@ export function SimulatorClient() {
             <PlanCard key={i} plan={plan} />
           ))}
 
-          {/* Agent trace — collapsed by default */}
+          {/* Agent trace - collapsed by default */}
           <AgentTrace
             trace={result.trace}
             label="How this plan was built"

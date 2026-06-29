@@ -67,7 +67,7 @@ export function DecisionCard({
       </CardHeader>
 
       <CardContent className="px-5 py-4 space-y-4">
-        {/* Score bars (Match card variant — skill + competency side by side) */}
+        {/* Score bars (Match card variant - skill + competency side by side) */}
         {scoreBars && scoreBars.length > 0 && (
           <div className="space-y-2">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Match Scores</p>

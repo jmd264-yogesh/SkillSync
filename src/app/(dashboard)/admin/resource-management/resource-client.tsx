@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 
@@ -187,7 +187,7 @@ const PRIORITY_CONFIG: Record<RequirementPriority, { label: string; className: s
 };
 
 function formatDate(d: Date | null): string {
-  if (!d) return "—";
+  if (!d) return "-";
   return new Date(d).toLocaleDateString("en-US", { month: "short", year: "numeric", day: "numeric" });
 }
 
@@ -339,7 +339,7 @@ function ManageAllocationsSheet({
                 <div key={alloc.id} className="flex items-center justify-between bg-muted/40 rounded-xl px-4 py-3">
                   <div>
                     <p className="text-sm font-semibold">{alloc.employee.name}</p>
-                    <p className="text-xs text-muted-foreground">{alloc.role ?? "—"} &middot; {alloc.allocation}%</p>
+                    <p className="text-xs text-muted-foreground">{alloc.role ?? "-"} &middot; {alloc.allocation}%</p>
                   </div>
                   <Button
                     variant="ghost"
@@ -809,7 +809,7 @@ const LEVEL_SIGNALS: Array<{ pattern: RegExp; level: number }> = [
 
 type ProfiledSkill = {
   clientId: string;
-  skillId: string | null;    // null means not in DB yet — will be created on apply
+  skillId: string | null;    // null means not in DB yet - will be created on apply
   skillName: string;
   skillCategory: SkillCategory;
   requiredLevel: number;
@@ -981,7 +981,7 @@ function SkillDemandProfiler({
           </div>
           <div>
             <h3 className="font-bold text-base text-primary">Skill Demand Profiler</h3>
-            <p className="text-xs text-muted-foreground">Paste a project description, JD, or SOW — any skill mentioned will be extracted</p>
+            <p className="text-xs text-muted-foreground">Paste a project description, JD, or SOW - any skill mentioned will be extracted</p>
           </div>
         </div>
         <div className="px-6 py-5 space-y-4">
@@ -990,7 +990,7 @@ function SkillDemandProfiler({
             <Textarea
               value={text}
               onChange={(e) => { setText(e.target.value); setAnalyzed(false); }}
-              placeholder={"Paste any text here — job descriptions, project briefs, SOWs, RFPs.\n\nExample:\n\"We need a Senior React developer with 5+ years of experience in TypeScript and Node.js. Must have Docker and Kubernetes expertise. GraphQL experience is a strong plus. The team uses Terraform for infrastructure and GitHub Actions for CI/CD. AWS knowledge required...\""}
+              placeholder={"Paste any text here - job descriptions, project briefs, SOWs, RFPs.\n\nExample:\n\"We need a Senior React developer with 5+ years of experience in TypeScript and Node.js. Must have Docker and Kubernetes expertise. GraphQL experience is a strong plus. The team uses Terraform for infrastructure and GitHub Actions for CI/CD. AWS knowledge required...\""}
               className="min-h-[200px] text-sm font-mono resize-y"
             />
             <p className="text-[10px] text-muted-foreground mt-1">{text.split(/\s+/).filter(Boolean).length} words</p>
@@ -1005,7 +1005,7 @@ function SkillDemandProfiler({
                 Found <span className="font-semibold text-foreground">{skills.length}</span> skill{skills.length !== 1 ? "s" : ""}
                 {skills.some((s) => s.isNew) && (
                   <span className="ml-1.5 text-primary font-medium">
-                    ({skills.filter((s) => s.isNew).length} new — will be added to your skills library)
+                    ({skills.filter((s) => s.isNew).length} new - will be added to your skills library)
                   </span>
                 )}
               </span>
@@ -1025,7 +1025,7 @@ function SkillDemandProfiler({
                   <span className="h-2 w-2 rounded-full bg-primary inline-block" />Existing in library
                 </span>
                 <span className="inline-flex items-center gap-1">
-                  <span className="h-2 w-2 rounded-full bg-violet-400 inline-block" />New — will be created
+                  <span className="h-2 w-2 rounded-full bg-violet-400 inline-block" />New - will be created
                 </span>
               </p>
             </div>
@@ -1203,15 +1203,26 @@ export function ResourceClient({ projects, employees }: ResourceClientProps) {
 
   const [projectSearch, setProjectSearch] = useState("");
   const [projectStatusFilter, setProjectStatusFilter] = useState<ProjectStatus | "ALL">("ALL");
-  const [projectPage, setProjectPage] = useState(1);
+  const [visibleProjects, setVisibleProjects] = useState(6);
   const [activeTab, setActiveTab] = useState("overview");
 
   const [benchSearch, setBenchSearch] = useState("");
   const [benchCoeFilter, setBenchCoeFilter] = useState("");
-  const [benchPage, setBenchPage] = useState(1);
+  const [visibleBench, setVisibleBench] = useState(10);
 
   const PROJECT_PAGE_SIZE = 6;
   const BENCH_PAGE_SIZE = 10;
+
+  const projectSentinelRef = useRef<HTMLDivElement | null>(null);
+  const benchSentinelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setVisibleProjects(PROJECT_PAGE_SIZE);
+  }, [projectSearch, projectStatusFilter]);
+
+  useEffect(() => {
+    setVisibleBench(BENCH_PAGE_SIZE);
+  }, [benchSearch, benchCoeFilter]);
   const tabs = [
     {
       value: "overview",
@@ -1267,7 +1278,7 @@ export function ResourceClient({ projects, employees }: ResourceClientProps) {
       })
       .map((a) => ({
         employeeName: emp.name,
-        coe: emp.coe?.name ?? "—",
+        coe: emp.coe?.name ?? "-",
         projectName: a.project.name,
         endDate: a.endDate,
         allocation: a.allocation,
@@ -1282,11 +1293,7 @@ export function ResourceClient({ projects, employees }: ResourceClientProps) {
     const matchStatus = projectStatusFilter === "ALL" || p.status === projectStatusFilter;
     return matchSearch && matchStatus;
   });
-  const projectTotalPages = Math.max(1, Math.ceil(filteredProjects.length / PROJECT_PAGE_SIZE));
-  const paginatedProjects = filteredProjects.slice(
-    (projectPage - 1) * PROJECT_PAGE_SIZE,
-    projectPage * PROJECT_PAGE_SIZE
-  );
+  const paginatedProjects = filteredProjects.slice(0, visibleProjects);
 
   const benchCoes = Array.from(
     new Set(employees.map((e) => e.coe?.name).filter((n): n is string => !!n))
@@ -1299,11 +1306,45 @@ export function ResourceClient({ projects, employees }: ResourceClientProps) {
     const matchCoe = !benchCoeFilter || e.coe?.name === benchCoeFilter;
     return matchSearch && matchCoe;
   });
-  const benchTotalPages = Math.max(1, Math.ceil(filteredBench.length / BENCH_PAGE_SIZE));
-  const paginatedBench = filteredBench.slice(
-    (benchPage - 1) * BENCH_PAGE_SIZE,
-    benchPage * BENCH_PAGE_SIZE
-  );
+  const paginatedBench = filteredBench.slice(0, visibleBench);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[0];
+      if (entry && entry.isIntersecting) {
+        setVisibleProjects((prev) => Math.min(prev + PROJECT_PAGE_SIZE, filteredProjects.length));
+      }
+    }, { rootMargin: "100px" });
+
+    const currentSentinel = projectSentinelRef.current;
+    if (currentSentinel) {
+      observer.observe(currentSentinel);
+    }
+    return () => {
+      if (currentSentinel) {
+        observer.unobserve(currentSentinel);
+      }
+    };
+  }, [filteredProjects.length]);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[0];
+      if (entry && entry.isIntersecting) {
+        setVisibleBench((prev) => Math.min(prev + BENCH_PAGE_SIZE, filteredBench.length));
+      }
+    }, { rootMargin: "100px" });
+
+    const currentSentinel = benchSentinelRef.current;
+    if (currentSentinel) {
+      observer.observe(currentSentinel);
+    }
+    return () => {
+      if (currentSentinel) {
+        observer.unobserve(currentSentinel);
+      }
+    };
+  }, [filteredBench.length]);
 
   return (
     <div onClick={loadSelects}>
@@ -1481,7 +1522,7 @@ export function ResourceClient({ projects, employees }: ResourceClientProps) {
                 <Input
                   placeholder="Search projects…"
                   value={projectSearch}
-                  onChange={(e) => { setProjectSearch(e.target.value); setProjectPage(1); }}
+                  onChange={(e) => setProjectSearch(e.target.value)}
                   className="pl-8 h-9 rounded-lg text-sm"
                 />
               </div>
@@ -1489,7 +1530,7 @@ export function ResourceClient({ projects, employees }: ResourceClientProps) {
                 {(["ALL", "ACTIVE", "PLANNING", "ON_HOLD", "COMPLETED"] as const).map((s) => (
                   <button
                     key={s}
-                    onClick={() => { setProjectStatusFilter(s); setProjectPage(1); }}
+                    onClick={() => setProjectStatusFilter(s)}
                     className={`px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${projectStatusFilter === s ? "bg-primary text-white" : "bg-white text-slate-500 hover:bg-slate-50"
                       }`}
                   >
@@ -1520,37 +1561,9 @@ export function ResourceClient({ projects, employees }: ResourceClientProps) {
                     />
                   ))}
                 </div>
-                {projectTotalPages > 1 && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">
-                      {filteredProjects.length} projects · Page {projectPage} of {projectTotalPages}
-                    </span>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        disabled={projectPage <= 1}
-                        onClick={() => setProjectPage((p) => p - 1)}
-                        className="h-8 w-8 rounded-lg border border-input flex items-center justify-center text-slate-500 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
-                      >
-                        <ChevronLeft className="h-4 w-4" />
-                      </button>
-                      {Array.from({ length: projectTotalPages }, (_, i) => i + 1).map((p) => (
-                        <button
-                          key={p}
-                          onClick={() => setProjectPage(p)}
-                          className={`h-8 w-8 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${projectPage === p ? "bg-primary text-white border-primary" : "border-input text-slate-600 hover:bg-slate-50"
-                            }`}
-                        >
-                          {p}
-                        </button>
-                      ))}
-                      <button
-                        disabled={projectPage >= projectTotalPages}
-                        onClick={() => setProjectPage((p) => p + 1)}
-                        className="h-8 w-8 rounded-lg border border-input flex items-center justify-center text-slate-500 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
-                      >
-                        <ChevronRight className="h-4 w-4" />
-                      </button>
-                    </div>
+                {visibleProjects < filteredProjects.length && (
+                  <div ref={projectSentinelRef} className="py-6 text-center text-sm font-semibold text-slate-400 tracking-wide animate-pulse">
+                    Loading more projects...
                   </div>
                 )}
               </>
@@ -1567,14 +1580,14 @@ export function ResourceClient({ projects, employees }: ResourceClientProps) {
                 <Input
                   placeholder="Search employees…"
                   value={benchSearch}
-                  onChange={(e) => { setBenchSearch(e.target.value); setBenchPage(1); }}
+                  onChange={(e) => setBenchSearch(e.target.value)}
                   className="pl-8 h-9 rounded-lg text-sm"
                 />
               </div>
               {benchCoes.length > 0 && (
                 <select
                   value={benchCoeFilter}
-                  onChange={(e) => { setBenchCoeFilter(e.target.value); setBenchPage(1); }}
+                  onChange={(e) => setBenchCoeFilter(e.target.value)}
                   className="select-field h-9 text-sm w-44!"
                 >
                   <option value="">All COEs</option>
@@ -1608,8 +1621,8 @@ export function ResourceClient({ projects, employees }: ResourceClientProps) {
                             <p className="text-xs text-muted-foreground">{emp.employeeCode}</p>
                           </td>
                           <td className="px-4 py-3">
-                            <p className="text-xs font-medium">{emp.coe?.name ?? "—"}</p>
-                            <p className="text-xs text-muted-foreground">{emp.designation?.name ?? "—"}</p>
+                            <p className="text-xs font-medium">{emp.coe?.name ?? "-"}</p>
+                            <p className="text-xs text-muted-foreground">{emp.designation?.name ?? "-"}</p>
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
@@ -1624,7 +1637,7 @@ export function ResourceClient({ projects, employees }: ResourceClientProps) {
                           <td className="px-4 py-3">
                             <div className="flex flex-wrap gap-1">
                               {emp.allocations.length === 0 ? (
-                                <span className="text-xs text-muted-foreground">—</span>
+                                <span className="text-xs text-muted-foreground">-</span>
                               ) : (
                                 emp.allocations.map((a) => (
                                   <span key={a.id} className="inline-flex items-center px-1.5 py-0.5 bg-indigo-50 text-primary rounded text-[10px] font-medium">
@@ -1652,35 +1665,9 @@ export function ResourceClient({ projects, employees }: ResourceClientProps) {
               </div>
             </div>
 
-            {benchTotalPages > 1 && (
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Page {benchPage} of {benchTotalPages}</span>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    disabled={benchPage <= 1}
-                    onClick={() => setBenchPage((p) => p - 1)}
-                    className="h-8 w-8 rounded-lg border border-input flex items-center justify-center text-slate-500 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </button>
-                  {Array.from({ length: benchTotalPages }, (_, i) => i + 1).map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => setBenchPage(p)}
-                      className={`h-8 w-8 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${benchPage === p ? "bg-primary text-white border-primary" : "border-input text-slate-600 hover:bg-slate-50"
-                        }`}
-                    >
-                      {p}
-                    </button>
-                  ))}
-                  <button
-                    disabled={benchPage >= benchTotalPages}
-                    onClick={() => setBenchPage((p) => p + 1)}
-                    className="h-8 w-8 rounded-lg border border-input flex items-center justify-center text-slate-500 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                </div>
+            {visibleBench < filteredBench.length && (
+              <div ref={benchSentinelRef} className="py-6 text-center text-sm font-semibold text-slate-400 tracking-wide animate-pulse">
+                Loading more employees...
               </div>
             )}
           </div>

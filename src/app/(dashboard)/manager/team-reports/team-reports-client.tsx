@@ -38,7 +38,7 @@ function DetailPanel({ detail }: { detail: TeamMemberDetail }) {
       {detail.gaps.length > 0 && (
         <div>
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-            Skill Gap — {metCount} of {total} skills met
+            Skill Gap - {metCount} of {total} skills met
           </p>
           <div className="space-y-1.5">
             {detail.gaps.map((gap) => (

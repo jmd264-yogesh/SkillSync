@@ -135,7 +135,7 @@ export function CoeClient({ coes }: { coes: Coe[] }) {
                       </div>
                     </td>
                     <td className="px-5 py-3.5">
-                      <span className="text-slate-800 text-md line-clamp-1 max-w-xs">{coe.description || "—"}</span>
+                      <span className="text-slate-800 text-md line-clamp-1 max-w-xs">{coe.description || "-"}</span>
                     </td>
                     <td className="px-4 py-3.5 text-center">
                       <Badge variant="secondary" className="rounded-md bg-indigo-50 text-primary border-0 font-semibold text-xs">

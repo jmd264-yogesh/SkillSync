@@ -21,7 +21,7 @@ export type ExtractedExperience = z.infer<typeof extractedDataSchema>;
 const SYSTEM = `You are an expert at extracting professional skills and experience from project documentation.
 Extract ONLY skills explicitly mentioned or clearly demonstrated. Do not invent skills not present in the text.
 Infer competency levels from context clues: led/architected = 4-5, built/implemented = 3-4, used/worked with = 2-3, exposure = 1-2.
-Return valid JSON only — no markdown fences, no explanation outside the JSON.`;
+Return valid JSON only - no markdown fences, no explanation outside the JSON.`;
 
 export async function extractExperienceFromText(projectContext: string): Promise<ExtractedExperience> {
   const fallback: ExtractedExperience = { skills: [] };

@@ -22,9 +22,11 @@ interface Employee {
   coeId: string | null;
   designationId: string | null;
   managerId: string | null;
+  clusterId: string | null;
   coe: { id: string; name: string } | null;
   designation: { id: string; name: string } | null;
   manager: { id: string; name: string } | null;
+  cluster: { id: string; name: string } | null;
   user: { id: string; email: string; role: UserRole } | null;
   _count: { employeeSkills: number; reportees: number };
 }
@@ -33,6 +35,7 @@ interface EmployeesClientProps {
   employees: Employee[];
   coes: { id: string; name: string }[];
   designations: { id: string; name: string }[];
+  clusters: { id: string; name: string }[];
   allSkills: { id: string; name: string; category: string }[];
 }
 
@@ -44,7 +47,7 @@ const roleColors: Record<UserRole, string> = {
 
 const PAGE_SIZE = 10;
 
-export function EmployeesClient({ employees, coes, designations, allSkills }: EmployeesClientProps) {
+export function EmployeesClient({ employees, coes, designations, clusters, allSkills }: EmployeesClientProps) {
   const [formOpen, setFormOpen] = useState(false);
   const [editItem, setEditItem] = useState<Employee | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -55,6 +58,7 @@ export function EmployeesClient({ employees, coes, designations, allSkills }: Em
   // Filters
   const [search, setSearch] = useState("");
   const [coeFilter, setCoeFilter] = useState("ALL");
+  const [clusterFilter, setClusterFilter] = useState("ALL");
   const [roleFilter, setRoleFilter] = useState("ALL");
   const [page, setPage] = useState(1);
 
@@ -76,8 +80,9 @@ export function EmployeesClient({ employees, coes, designations, allSkills }: Em
       emp.employeeCode.toLowerCase().includes(search.toLowerCase()) ||
       emp.email.toLowerCase().includes(search.toLowerCase());
     const matchCoe = coeFilter === "ALL" || emp.coe?.id === coeFilter;
+    const matchCluster = clusterFilter === "ALL" || emp.cluster?.id === clusterFilter;
     const matchRole = roleFilter === "ALL" || emp.user?.role === roleFilter;
-    return matchSearch && matchCoe && matchRole;
+    return matchSearch && matchCoe && matchCluster && matchRole;
   });
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -127,6 +132,18 @@ export function EmployeesClient({ employees, coes, designations, allSkills }: Em
 
         <div className="relative">
           <select
+            value={clusterFilter}
+            onChange={(e) => { setClusterFilter(e.target.value); handleFilterChange(); }}
+            className="h-9 rounded-lg border border-input bg-white pl-3 pr-8 text-sm cursor-pointer appearance-none"
+          >
+            <option value="ALL">All Clusters</option>
+            {clusters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+        </div>
+
+        <div className="relative">
+          <select
             value={roleFilter}
             onChange={(e) => { setRoleFilter(e.target.value); handleFilterChange(); }}
             className="h-9 rounded-lg border border-input bg-white pl-3 pr-8 text-sm cursor-pointer appearance-none"
@@ -159,6 +176,7 @@ export function EmployeesClient({ employees, coes, designations, allSkills }: Em
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider w-[100px]">Role</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">COE</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Designation</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Cluster</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Manager</th>
                   <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider w-[70px]">Skills</th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider w-[100px]">Actions</th>
@@ -188,9 +206,18 @@ export function EmployeesClient({ employees, coes, designations, allSkills }: Em
                           {emp.user?.role ?? "EMPLOYEE"}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3 text-sm text-slate-600">{emp.coe?.name ?? <span className="text-muted-foreground">—</span>}</td>
-                      <td className="px-4 py-3 text-sm text-slate-600">{emp.designation?.name ?? <span className="text-muted-foreground">—</span>}</td>
-                      <td className="px-4 py-3 text-sm text-slate-600">{emp.manager?.name ?? <span className="text-muted-foreground">—</span>}</td>
+                      <td className="px-4 py-3 text-sm text-slate-600">{emp.coe?.name ?? <span className="text-muted-foreground">-</span>}</td>
+                      <td className="px-4 py-3 text-sm text-slate-600">{emp.designation?.name ?? <span className="text-muted-foreground">-</span>}</td>
+                      <td className="px-4 py-3 text-sm text-slate-600">
+                        {emp.cluster?.name ? (
+                          <Badge variant="outline" className="bg-violet-50 text-violet-700 border-violet-100 text-xs font-semibold">
+                            {emp.cluster.name}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-600">{emp.manager?.name ?? <span className="text-muted-foreground">-</span>}</td>
                       <td className="px-4 py-3 text-center">
                         <Badge variant="secondary" className="rounded-md bg-indigo-50 text-primary border-0 font-semibold text-xs">
                           {emp._count.employeeSkills}
@@ -272,6 +299,7 @@ export function EmployeesClient({ employees, coes, designations, allSkills }: Em
         onOpenChange={(open) => { setFormOpen(open); if (!open) setEditItem(null); }}
         coes={coes}
         designations={designations}
+        clusters={clusters}
         managers={managerOptions}
         employee={editItem}
       />

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import {
   BarChart3, Target, AlertTriangle, CheckCircle2, XCircle, TrendingUp, Building2, Briefcase,
-  ChevronLeft, ChevronRight, Search,
+  ChevronLeft, ChevronRight, Search, Sparkles,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -59,7 +59,13 @@ function ReadinessRing({ percentage }: { percentage: number }) {
   );
 }
 
-export function GapClient({ analysis }: { analysis: GapAnalysis | null }) {
+interface GapClientProps {
+  analysis: GapAnalysis | null;
+  aiNarrative?: string | null;
+  aiConfigured?: boolean;
+}
+
+export function GapClient({ analysis, aiNarrative, aiConfigured }: GapClientProps) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "met" | "partial" | "missing">("all");
   const [page, setPage] = useState(1);
@@ -88,6 +94,25 @@ export function GapClient({ analysis }: { analysis: GapAnalysis | null }) {
   return (
     <div>
       <PageHeader title="Skill Gap Assessment" description="Compare your validated skills against your target profile" />
+
+      {/* AI Narrative card */}
+      {aiNarrative && (
+        <div className="mb-6 rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 flex gap-3">
+          <div className="h-8 w-8 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0 mt-0.5">
+            <Sparkles className="h-4 w-4 text-indigo-600" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wider mb-1.5">AI Analysis</p>
+            <p className="text-sm text-indigo-900 leading-relaxed whitespace-pre-line">{aiNarrative}</p>
+          </div>
+        </div>
+      )}
+      {aiConfigured && !aiNarrative && (
+        <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 p-3 flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-slate-400" />
+          <p className="text-xs text-slate-500">AI analysis unavailable - no skill gaps found or rate limit reached.</p>
+        </div>
+      )}
 
       {/* Summary row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
