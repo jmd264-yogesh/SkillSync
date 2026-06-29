@@ -236,6 +236,7 @@ export interface MatchResultV2 extends MatchResult {
   coeAlignmentScore: number;
   coeAligned: boolean;
   empCoeName: string | null;
+  requestedDomain: string | null;  // COE domain derived from request skillset
   releasableFrom: Date | null;
   isRollingOff: boolean;
   designationGap: number;
@@ -429,6 +430,74 @@ function computeExperienceScore(
   return Math.min(100, blended + bonusPts);
 }
 
+// ── Skill → COE domain mapping ────────────────────────────────────────────────
+// Used to derive the COE domain the REQUEST actually needs (from its skillset),
+// rather than relying on the solution column label or the employee's own COE.
+// Each entry: [lowercase keyword, coe name that owns this skill domain].
+const SKILL_COE_DOMAIN: Array<[string, string]> = [
+  // Data Engineering — specific first
+  ["pyspark",             "data engineering"],
+  ["snowflake",           "data engineering"],
+  ["airflow",             "data engineering"],
+  ["kafka",               "data engineering"],
+  ["dbt",                 "data engineering"],
+  ["scd",                 "data engineering"],   // Slowly Changing Dimensions
+  ["etl",                 "data engineering"],
+  ["data pipeline",       "data engineering"],
+  ["data model",          "data engineering"],
+  ["data warehouse",      "data engineering"],
+  ["anomaly detection",   "data engineering"],
+  ["ltv",                 "data engineering"],
+  // DevOps
+  ["kubernetes",          "devops"],
+  ["docker",              "devops"],
+  ["terraform",           "devops"],
+  ["jenkins",             "devops"],
+  ["helm",                "devops"],
+  ["ansible",             "devops"],
+  ["ci/cd",               "devops"],
+  ["deployment troubleshooting", "devops"],
+  // Frontend
+  ["shadcn",              "frontend"],
+  ["tailwind",            "frontend"],
+  ["vue",                 "frontend"],
+  ["angular",             "frontend"],
+  ["css",                 "frontend"],
+  ["html",                "frontend"],
+  // Full Stack / Backend (web/API skills)
+  ["express",             "full stack"],
+  ["graphql",             "full stack"],
+  ["oauth",               "full stack"],
+  ["branching",           "full stack"],
+  ["node.js",             "full stack"],
+  ["playwright",          "full stack"],
+  ["selenium",            "full stack"],
+  ["scrapy",              "full stack"],   // web scraping is a full-stack activity
+  ["react",               "full stack"],
+  ["javascript",          "full stack"],
+  ["typescript",          "full stack"],
+  ["commits",             "full stack"],
+  ["diffs",               "full stack"],
+  ["rest api",            "full stack"],
+  ["microservices",       "backend"],
+  ["spring",              "backend"],
+  ["django",              "backend"],
+  ["fastapi",             "backend"],
+];
+
+/** Returns the most-voted COE domain for this request based on skillset keywords. */
+function deriveRequestCoeDomain(skillset: string | null, solution: string | null): string | null {
+  const text = `${skillset ?? ""} ${solution ?? ""}`.toLowerCase();
+  const votes: Record<string, number> = {};
+  for (const [kw, domain] of SKILL_COE_DOMAIN) {
+    if (text.includes(kw)) {
+      votes[domain] = (votes[domain] ?? 0) + 1;
+    }
+  }
+  if (Object.keys(votes).length === 0) return null;
+  return Object.entries(votes).sort((a, b) => b[1] - a[1])[0]![0]!;
+}
+
 // ── COE alignment ─────────────────────────────────────────────────────────────
 // Multi-signal check - gap 7 fix (tech_coe / proposition_coe previously unused).
 // Scoring: 0–100 across up to 4 signals.
@@ -439,19 +508,22 @@ function computeCoeAlignment(
   emp: EmployeeRow,
   reqSkillset: string | null,
   reqSolution: string | null,
-): { aligned: boolean; score: number } {
+): { aligned: boolean; score: number; requestedDomain: string | null } {
   const coeName = emp.coe?.name?.toLowerCase().trim();
   const searchText = `${reqSkillset ?? ""} ${reqSolution ?? ""}`.toLowerCase();
   const searchTokens = searchText.split(/[\s,;/()]+/).filter((t) => t.length >= 3);
+  const requestedDomain = deriveRequestCoeDomain(reqSkillset, reqSolution);
 
   let signals = 0;
-  const MAX_SIGNALS = 4; // sum of all possible signal weights
+  const MAX_SIGNALS = 4;
 
-  // Signal A (weight 2): employee COE name directly in pipeline request text
+  // Signal A (weight 2): employee COE name literally in request text
   if (coeName && searchText.includes(coeName)) signals += 2;
 
-  // Signal B (weight 1): any active project's techCoe or propositionCoe overlaps
-  // with the pipeline request skillset/solution keywords
+  // Signal A2 (weight 2): employee COE matches the skill-derived domain
+  if (signals < 2 && coeName && requestedDomain && coeName === requestedDomain) signals += 2;
+
+  // Signal B (weight 1): active project techCoe/propositionCoe overlaps request keywords
   const activeProjCoes = emp.allocations
     .filter((a) => a.project.status !== "COMPLETED")
     .flatMap((a) => [
@@ -466,13 +538,19 @@ function computeCoeAlignment(
     )
   ) signals++;
 
-  // Signal C (weight 1): employee COE aligns with their current delivery domain
-  if (coeName && activeProjCoes.some((pc) => pc.includes(coeName) || coeName.includes(pc))) {
+  // Signal C (weight 1): employee COE = derived domain AND they're on matching project
+  // (guarded by derived domain — prevents false positives from in-own-domain projects)
+  if (
+    requestedDomain &&
+    coeName &&
+    coeName === requestedDomain &&
+    activeProjCoes.some((pc) => pc.includes(coeName) || coeName.includes(pc))
+  ) {
     signals++;
   }
 
   const score = Math.round((signals / MAX_SIGNALS) * 100);
-  return { aligned: signals >= 1, score };
+  return { aligned: signals >= 2, score, requestedDomain };
 }
 
 // ── Designation seniority gap ─────────────────────────────────────────────────
@@ -660,7 +738,7 @@ function scoreEmployee(
   const evidenceStrength = Math.min(totalEvidence * 10 + expBoost, 100);
 
   // ── COE Alignment ──────────────────────────────────────────────────────────
-  const { aligned: coeAligned, score: coeAlignmentScore } = computeCoeAlignment(
+  const { aligned: coeAligned, score: coeAlignmentScore, requestedDomain } = computeCoeAlignment(
     emp,
     reqSkillset,
     reqSolution,
@@ -693,16 +771,35 @@ function scoreEmployee(
   );
 
   // ── Signal ─────────────────────────────────────────────────────────────────
+  // Technical executor roles (SE / SSE / Enabler) are generalist implementors
+  // who can be onboarded to a new stack — always prefer internal over external hire.
+  // Consulting/management roles need more specific expertise; stricter thresholds apply.
+  const techExec = canonicalRoles.some((r) =>
+    ["software engineer", "senior software engineer", "solutions enabler"].includes(r.toLowerCase()),
+  );
+  const redeployMinCoverage = techExec ? 0.5 : 0.7;
+  const redeployMinSkill    = techExec ? 40  : 60;
+  const hireCovCutoff       = techExec ? 0.2 : 0.4; // below this → external hire (consulting only)
+
   let signal: MatchSignal;
   if (riskFlags.includes("LEAVER")) {
     // Leavers should never be deployed - force external hire signal
     signal = "HIRE";
   } else if (!hasSkillFilter) {
-    signal = availableFTE > 0.5 ? "REDEPLOY" : availableFTE > 0.1 ? "PARTIAL_HIRE" : "HIRE";
-  } else if (coveragePct < 0.7 || skillScore < 60 || availableFTE === 0) {
-    signal = coveragePct < 0.4 ? "HIRE" : "PARTIAL_HIRE";
-  } else {
+    // No DB skills matched from pipeline skillset — signal driven purely by availability
+    if (availableFTE > 0.3)               signal = "REDEPLOY";
+    else if (availableFTE > 0.05)         signal = "PARTIAL_HIRE";
+    else if (techExec)                    signal = "PARTIAL_HIRE"; // SSE/SE: internal coordination over external hire
+    else                                  signal = "HIRE";
+  } else if (coveragePct >= redeployMinCoverage && skillScore >= redeployMinSkill && availableFTE > 0.1) {
     signal = "REDEPLOY";
+  } else if (!techExec && coveragePct < hireCovCutoff) {
+    // Consulting roles: low skill coverage alone justifies external hire
+    signal = "HIRE";
+  } else {
+    // techExec: always PARTIAL_HIRE — internal coordination / training preferred over external hire
+    // Consulting mid-coverage: PARTIAL_HIRE (coverage ≥ hireCovCutoff but below REDEPLOY threshold)
+    signal = "PARTIAL_HIRE";
   }
 
   // ── Notice period + planned leave (base MatchResult fields) ─────────────────
@@ -752,6 +849,7 @@ function scoreEmployee(
     coeAlignmentScore,
     coeAligned,
     empCoeName: emp.coe?.name ?? null,
+    requestedDomain,
     releasableFrom,
     isRollingOff,
     designationGap,
@@ -822,7 +920,7 @@ function toAction(
     : "";
   const riskNote     = match.riskFlags.length > 0 ? ` ⚠ ${match.riskFlags.join(", ")}` : "";
   const sharedNote   = poolExhausted ? " (shared - pool exhausted)" : "";
-  const coeTag       = match.coeAligned ? ` ✓ COE:${match.empCoeName ?? ""}` : "";
+  const coeTag       = match.coeAligned ? ` ✓ COE:${match.requestedDomain ?? match.empCoeName ?? ""}` : "";
   const rollingTag   = match.isRollingOff ? " (rolling off - natural window)" : "";
 
   if (match.signal === "HIRE") {
@@ -1039,9 +1137,18 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
       .sort((a, b) => b.matchScore - a.matchScore)
       .slice(0, 3);
 
-    // Selection order: availability tier DESC → matchScore DESC within tier
-    // Any Tier-3 employee (>50% free) beats all lower-tier employees regardless of match score.
+    // Selection order (priority descending):
+    //   1. Non-GHOST before GHOST — ghost flags indicate unreliable/non-performing resource
+    //   2. Non-HIRE before HIRE  — any internal capacity preferred over external hire signal
+    //   3. Availability tier DESC — most-free employee within tier wins
+    //   4. Match score DESC       — highest quality within availability tier
     const selectionOrder = [...allScored].sort((a, b) => {
+      const ghostA = a.riskFlags.includes("GHOST") ? 0 : 1;
+      const ghostB = b.riskFlags.includes("GHOST") ? 0 : 1;
+      if (ghostA !== ghostB) return ghostB - ghostA;
+      const hireA = a.signal === "HIRE" ? 0 : 1;
+      const hireB = b.signal === "HIRE" ? 0 : 1;
+      if (hireA !== hireB) return hireB - hireA;
       const ta = availabilityTier(a.availableFTE);
       const tb = availabilityTier(b.availableFTE);
       if (ta !== tb) return tb - ta;
@@ -1067,6 +1174,12 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
       const fullScored = activeCandidates
         .map((emp) => scoreEmployee(emp, reqSkills, scoreOpts))
         .sort((a, b) => {
+          const ghostA = a.riskFlags.includes("GHOST") ? 0 : 1;
+          const ghostB = b.riskFlags.includes("GHOST") ? 0 : 1;
+          if (ghostA !== ghostB) return ghostB - ghostA;
+          const hireA = a.signal === "HIRE" ? 0 : 1;
+          const hireB = b.signal === "HIRE" ? 0 : 1;
+          if (hireA !== hireB) return hireB - hireA;
           const ta = availabilityTier(a.availableFTE);
           const tb = availabilityTier(b.availableFTE);
           if (ta !== tb) return tb - ta;
@@ -1147,7 +1260,7 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
       // Deterministic fallback when AI times out or is unavailable
       const dim  = m.skillScore >= m.competencyScore ? "technical skills" : "consulting competency";
       const risk = m.unmetSkills.length > 0 ? `missing ${m.unmetSkills[0]}` : "availability constrained";
-      const coeNote  = m.coeAligned ? ` COE-aligned (${m.empCoeName}).` : "";
+      const coeNote  = m.coeAligned ? ` COE-aligned (${m.requestedDomain ?? m.empCoeName}).` : "";
       const riskNote = m.riskFlags.length > 0 ? ` Risk: ${m.riskFlags.join(", ")}.` : "";
       return `${m.name} leads on ${dim} (${m.matchScore}/100).${coeNote} Primary concern: ${risk}. Signal: ${m.signal}.${riskNote}`;
     }
@@ -1171,7 +1284,7 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
       const m    = asgn.match;
       const dim  = m.skillScore >= m.competencyScore ? "technical skills" : "consulting competency";
       const risk = m.unmetSkills.length > 0 ? `missing ${m.unmetSkills[0]}` : "availability limited";
-      const coeNote  = m.coeAligned ? ` COE-aligned (${m.empCoeName}).` : "";
+      const coeNote  = m.coeAligned ? ` COE-aligned (${m.requestedDomain ?? m.empCoeName}).` : "";
       const expNote  = m.experienceScore > 0 ? ` Experience depth: ${m.experienceScore}/100.` : "";
       const riskNote = m.riskFlags.length > 0 ? ` Risk: ${m.riskFlags.join(", ")}.` : "";
       asgn.rationale  = `${m.name} scores ${m.matchScore}/100. Strongest: ${dim}.${coeNote}${expNote} Risk: ${risk}.${riskNote}`;
@@ -1214,8 +1327,8 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
           asgn.match.experienceScore,                                        // 26 Experience Score
           Math.round(asgn.match.availableFTE * 100),                         // 27 Availability Score
           asgn.match.coeAligned                                              // 28 COE Alignment
-            ? `✓ ${asgn.match.empCoeName ?? "COE"}`
-            : "✗ No match",
+            ? `✓ ${asgn.match.requestedDomain ?? asgn.match.empCoeName ?? "COE"}`
+            : `✗ ${asgn.match.requestedDomain ?? "No match"}`,
           asgn.match.signal,                                                 // 29 Signal
           asgn.match.riskFlags.length > 0                                    // 30 Risk Flags
             ? asgn.match.riskFlags.join(", ")
