@@ -563,7 +563,7 @@ function deriveRequestCoeDomain(skillset: string | null, solution: string | null
 const ROLE_ADJACENCY: Record<string, string[]> = {
   "senior software engineer": ["software engineer"],
   "software engineer":        [],
-  "solutions enabler":        [],
+  "solutions enabler":        ["senior software engineer"],
 };
 
 function getAdjacentRoles(canonicalRoles: string[]): string[] {
