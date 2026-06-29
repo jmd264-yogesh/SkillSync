@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Settings2, Award, Users, Link2,
   Search, BarChart3, ClipboardCheck, FileText, GraduationCap,
   ArrowUpRight, FileBarChart, Target, UserCheck, LayoutGrid,
-  MessageSquare, Zap, HeartPulse, TrendingUp, CalendarRange, Bot, Briefcase, Presentation, ClipboardList,
+  MessageSquare, Zap, HeartPulse, TrendingUp, CalendarRange, Bot, Briefcase, Presentation, ClipboardList, Lightbulb,
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
@@ -31,6 +31,7 @@ const adminNavItems: NavItem[] = [
 ];
 
 const resourcingNavItems: NavItem[] = [
+  { title: "Pipeline Inception", href: "/admin/resourcing/pipeline",      icon: Lightbulb },
   { title: "PM Questionnaire",  href: "/admin/resourcing/questionnaire", icon: ClipboardList },
   { title: "Match Engine",      href: "/admin/resourcing/match",         icon: Zap },
   { title: "Health Radar",      href: "/admin/resourcing/health",        icon: HeartPulse },

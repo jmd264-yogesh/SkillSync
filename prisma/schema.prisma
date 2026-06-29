@@ -282,6 +282,26 @@ enum LearningType {
 
 // ─── Resource Management ─────────────────────────────────────
 
+enum ClientTier {
+  GOLD
+  SILVER
+  BRONZE
+}
+
+model Client {
+  id                String     @id @default(uuid())
+  name              String     @unique
+  tier              ClientTier @default(BRONZE)
+  relationshipSince DateTime?  @map("relationship_since")
+  isNew             Boolean    @default(false) @map("is_new")
+  industry          String?
+  projects          Project[]
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+
+  @@map("clients")
+}
+
 enum ProjectStatus {
   PLANNING
   ACTIVE
@@ -348,6 +368,8 @@ model Project {
   techCoe              String?                   @map("tech_coe")
   propositionCoe       String?                   @map("proposition_coe")
   clientId             String?                   @map("client_id")
+  clientRef            Client?                   @relation(fields: [clientRefId], references: [id])
+  clientRefId          String?                   @map("client_ref_id")
   actualEndDate        DateTime?                 @map("actual_end_date")
   externalId           String?                   @unique @map("external_id")
   projectManagerId     String?                   @map("project_manager_id")
@@ -653,14 +675,24 @@ model PipelineRequest {
   percentAvailable  Float?    @map("percent_available")
   skillset          String?
   skillsetMatch     String?   @map("skillset_match")
-  sowSigned         Boolean   @default(false) @map("sow_signed")
-  status            String?
-  comments          String?
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
+  sowSigned              Boolean   @default(false) @map("sow_signed")
+  status                 String?
+  comments               String?
+  // Enhancement fields (WI-008)
+  serviceLine            String?   @map("service_line")
+  solutionPriority       Int?      @map("solution_priority")
+  confidence             Int       @default(20)
+  isNewClient            Boolean   @default(false) @map("is_new_client")
+  clientRelationshipMonths Int?    @map("client_relationship_months")
+  clientTier             String?   @map("client_tier")
+  dealLostAt             DateTime? @map("deal_lost_at")
+  hiringLeadTimeAlert    Boolean   @default(false) @map("hiring_lead_time_alert")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
 
   @@index([cluster])
   @@index([sowSigned])
+  @@index([dealLostAt])
   @@map("pipeline_requests")
 }
 

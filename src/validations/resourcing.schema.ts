@@ -38,6 +38,20 @@ export const pipelineOutlookSchema = z.object({
   cluster: z.number().int().optional(),
 });
 
+export const markDealLostSchema = z.object({
+  pipelineRequestId: z.string().uuid(),
+  projectId: z.string().uuid().optional(),
+});
+
+export const updatePipelineContextSchema = z.object({
+  pipelineRequestId: z.string().uuid(),
+  clientTier: z.enum(["GOLD", "SILVER", "BRONZE"]).optional(),
+  isNewClient: z.boolean().optional(),
+  clientRelationshipMonths: z.number().int().min(0).max(600).optional(),
+  serviceLine: z.string().min(1).max(100).optional(),
+  comments: z.string().max(1000).optional(),
+});
+
 export const allocationReportFilterSchema = z.object({
   status: z.enum(["ALL", "OVER", "FULL", "UNDER", "BENCH"]).optional().default("ALL"),
   coeId: z.string().uuid().optional(),

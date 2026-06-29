@@ -17,7 +17,7 @@ export interface EmployeeAvailability {
   releasableFrom: Date | null;
 }
 
-function utilStatus(pct: number): UtilisationStatus {
+export function utilStatus(pct: number): UtilisationStatus {
   if (pct > 1.0) return "OVER";
   if (pct >= 0.85) return "FULL";
   if (pct > 0) return "UNDER";
