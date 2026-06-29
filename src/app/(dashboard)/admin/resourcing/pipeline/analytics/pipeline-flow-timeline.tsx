@@ -29,26 +29,42 @@ const PRIMARY = "#19105b"; // Deep Navy
 const SECONDARY = "#ff6196"; // Vibrant Pink
 
 const STAGE_FLOW_CONFIG = [
-  { key: "LEAD",        abbr: "OI",   label: "Opportunity Inception",   align: "down", color: "#64748b", desc: "Early-stage leads identified in HubSpot. Raw interest and initial staffing scoping." },
-  { key: "PROPOSAL",    abbr: "MIR",  label: "Make It Real",            align: "up",   color: "#818cf8", desc: "Proposal submitted. Scopes finalized, matching initial skill requirements." },
-  { key: "SOW_PENDING", abbr: "BP",   label: "Build Proposition",       align: "down", color: "#fb7185", desc: "SOW draft prepared and pending review. High probability of resource demand." },
-  { key: "SOW_SIGNED",  abbr: "SOW",  label: "SOW Signed",              align: "up",   color: SECONDARY, desc: "Scoping approved and signed. Allocations ready to be locked into projects." },
-  { key: "ACTIVE",      abbr: "ACT",  label: "Active Delivery",         align: "down", color: PRIMARY,   desc: "Active delivery. FTEs on the field, utilizing core skills." },
-  { key: "RAMP_DOWN",   abbr: "EXT",  label: "Extension/Ramp Down",     align: "up",   color: "#6366f1", desc: "Project near completion. Assessing renewal extensions or bench release." },
+  { key: "LEAD", abbr: "OI", label: "Opportunity Inception", align: "down", color: "#64748b", desc: "Early-stage leads identified in HubSpot. Raw interest and initial staffing scoping." },
+  { key: "PROPOSAL", abbr: "MIR", label: "Make It Real", align: "up", color: "#818cf8", desc: "Proposal submitted. Scopes finalized, matching initial skill requirements." },
+  { key: "SOW_PENDING", abbr: "BP", label: "Build Proposition", align: "down", color: "#fb7185", desc: "SOW draft prepared and pending review. High probability of resource demand." },
+  { key: "SOW_SIGNED", abbr: "SOW", label: "SOW Signed", align: "up", color: SECONDARY, desc: "Scoping approved and signed. Allocations ready to be locked into projects." },
+  { key: "ACTIVE", abbr: "ACT", label: "Active Delivery", align: "down", color: PRIMARY, desc: "Active delivery. FTEs on the field, utilizing core skills." },
+  { key: "RAMP_DOWN", abbr: "EXT", label: "Extension/Ramp Down", align: "up", color: "#6366f1", desc: "Project near completion. Assessing renewal extensions or bench release." },
 ] as const;
 
 const STAGE_SKILLS: Record<string, string[]> = {
-  LEAD:        ["Client Discovery", "Initial Scoping", "Commercial Strategy"],
-  PROPOSAL:    ["Solution Architecture", "FTE Estimations", "Tech Stack Mapping"],
+  LEAD: ["Client Discovery", "Initial Scoping", "Commercial Strategy"],
+  PROPOSAL: ["Solution Architecture", "FTE Estimations", "Tech Stack Mapping"],
   SOW_PENDING: ["Contractual SOW", "Resource Matching", "Commercial Review"],
-  SOW_SIGNED:  ["Pre-onboarding", "Resource Allocation", "Project Kickoff"],
-  ACTIVE:      ["Active Delivery", "Focal Competencies", "SLA Monitoring"],
-  RAMP_DOWN:   ["Transition Planning", "Resource Release", "Extension Scoping"],
+  SOW_SIGNED: ["Pre-onboarding", "Resource Allocation", "Project Kickoff"],
+  ACTIVE: ["Active Delivery", "Focal Competencies", "SLA Monitoring"],
+  RAMP_DOWN: ["Transition Planning", "Resource Release", "Extension Scoping"],
 };
 
 function normalizeStage(raw: string | null): string {
   if (!raw) return "UNKNOWN";
   return raw.toUpperCase().replace(/\s+/g, "_");
+}
+
+/** Converts monthsUntilStart + likelyStart into a clear human label, e.g. "~9 days (Jul 5)" */
+function formatLeadTime(months: number | null, likelyStart: Date | null): string {
+  const dateStr = likelyStart
+    ? new Date(likelyStart).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+    : null;
+  const suffix = dateStr ? ` (${dateStr})` : "";
+  if (months === null) return "Start date unknown";
+  if (months <= 0) return `Overdue${suffix}`;
+  const days = Math.round(months * 30.44);
+  if (days < 14) return `~${days} day${days === 1 ? "" : "s"}${suffix}`;
+  const weeks = Math.round(days / 7);
+  if (months < 2) return `~${weeks} week${weeks === 1 ? "" : "s"}${suffix}`;
+  const mo = months.toFixed(1);
+  return `~${mo} months${suffix}`;
 }
 
 interface PipelineFlowTimelineProps {
@@ -65,7 +81,7 @@ export function PipelineFlowTimeline({ requests, benchCount }: PipelineFlowTimel
     return STAGE_FLOW_CONFIG.map((cfg) => {
       const deals = active.filter((r) => normalizeStage(r.dealStage) === cfg.key);
       const fte = deals.reduce((s, r) => s + (r.resourceRecommended ?? 0), 0);
-      
+
       let winProb = 0.2;
       if (cfg.key === "SOW_PENDING") winProb = 0.4;
       else if (cfg.key === "SOW_SIGNED") winProb = 0.8;
@@ -74,10 +90,11 @@ export function PipelineFlowTimeline({ requests, benchCount }: PipelineFlowTimel
 
       const weightedFte = fte * winProb;
       // Active Delivery and Ramp Down are already staffed — no hiring shortage applies
-      const hiringRisks = (cfg.key === "ACTIVE" || cfg.key === "RAMP_DOWN")
-        ? 0
-        : deals.filter(r => r.hiringLeadTimeAlert).length;
-      const avgDuration = deals.filter(r => r.numberOfWeeks).reduce((s,r) => s + (r.numberOfWeeks ?? 0), 0) / (deals.filter(r => r.numberOfWeeks).length || 1);
+      const atRiskDeals = (cfg.key === "ACTIVE" || cfg.key === "RAMP_DOWN")
+        ? []
+        : deals.filter(r => r.hiringLeadTimeAlert);
+      const hiringRisks = atRiskDeals.length;
+      const avgDuration = deals.filter(r => r.numberOfWeeks).reduce((s, r) => s + (r.numberOfWeeks ?? 0), 0) / (deals.filter(r => r.numberOfWeeks).length || 1);
 
       return {
         ...cfg,
@@ -85,6 +102,7 @@ export function PipelineFlowTimeline({ requests, benchCount }: PipelineFlowTimel
         fte: Math.round(fte * 10) / 10,
         weightedFte: Math.round(weightedFte * 10) / 10,
         hiringRisks,
+        atRiskDeals,
         avgDuration: Math.round(avgDuration * 10) / 10 || 0,
         winProb: Math.round(winProb * 100)
       };
@@ -103,27 +121,27 @@ export function PipelineFlowTimeline({ requests, benchCount }: PipelineFlowTimel
 
     const winProb = stageCfg?.key === "ACTIVE" || stageCfg?.key === "RAMP_DOWN" ? 1.0
       : stageCfg?.key === "SOW_SIGNED" ? 0.8
-      : stageCfg?.key === "SOW_PENDING" ? 0.4
-      : 0.2;
+        : stageCfg?.key === "SOW_PENDING" ? 0.4
+          : 0.2;
 
     const grossFte = stageDeals.reduce((s, r) => s + (r.resourceRecommended ?? 0), 0);
     const haircutFte = grossFte * (1 - winProb);
     const expectedFte = grossFte * winProb;
 
-    const grossVal   = Math.round(grossFte * 10) / 10;
+    const grossVal = Math.round(grossFte * 10) / 10;
     const haircutVal = Math.round(haircutFte * 10) / 10;
     const expectedVal = Math.round(expectedFte * 10) / 10;
 
     return [
-      { name: "Stage Gross Demand",    base: 0,                     value: grossVal,    displayVal: `${grossVal} FTE`,     type: "pillar",  fill: PRIMARY },
-      { name: "Win Prob. Haircut",      base: grossVal - haircutVal, value: haircutVal,  displayVal: `(${haircutVal}) FTE`, type: "leakage", fill: SECONDARY },
-      { name: "Expected Net Demand",   base: 0,                     value: expectedVal, displayVal: `${expectedVal} FTE`,  type: "pillar",  fill: PRIMARY },
+      { name: "Stage Gross Demand", base: 0, value: grossVal, displayVal: `${grossVal} FTE`, type: "pillar", fill: PRIMARY },
+      { name: "Win Prob. Haircut", base: grossVal - haircutVal, value: haircutVal, displayVal: `(${haircutVal}) FTE`, type: "leakage", fill: SECONDARY },
+      { name: "Expected Net Demand", base: 0, value: expectedVal, displayVal: `${expectedVal} FTE`, type: "pillar", fill: PRIMARY },
     ];
   }, [active, selectedStage]);
 
   return (
     <div className="space-y-6">
-      
+
       {/* ── Horizontal Flow Timeline Card ── */}
       <SectionCard
         title="Pipeline Flow & Funnel Timeline"
@@ -135,7 +153,7 @@ export function PipelineFlowTimeline({ requests, benchCount }: PipelineFlowTimel
         {/* Outer scroll container to prevent cut-off at screen edges */}
         <div className="overflow-x-auto pb-4 pt-4 px-6 w-full scrollbar-thin">
           <div className="min-w-[920px] relative h-[420px] p-0">
-            
+
             {/* Central pipeline (pipe) */}
             <div className="w-[84%] h-6 bg-slate-100 rounded-full border border-slate-200/50 absolute left-[8%] right-[8%] top-[210px] -translate-y-1/2 shadow-inner overflow-hidden">
               <motion.div
@@ -161,7 +179,7 @@ export function PipelineFlowTimeline({ requests, benchCount }: PipelineFlowTimel
 
                 return (
                   <div key={stage.key} className="relative flex flex-col items-center">
-                    
+
                     {/* Visual Node Dot on the Pipeline */}
                     <motion.button
                       whileHover={{ scale: 1.25 }}
@@ -191,10 +209,10 @@ export function PipelineFlowTimeline({ requests, benchCount }: PipelineFlowTimel
                           isSelected
                             ? stage.key === "ACTIVE" ? "bg-emerald-500"
                               : stage.key === "RAMP_DOWN" ? "bg-indigo-400"
-                              : stage.hiringRisks > 0 ? "bg-rose-500" : "bg-[#ff6196]"
+                                : stage.hiringRisks > 0 ? "bg-rose-500" : "bg-[#ff6196]"
                             : stage.key === "ACTIVE" ? "bg-emerald-400"
                               : stage.key === "RAMP_DOWN" ? "bg-indigo-300"
-                              : stage.hiringRisks > 0 ? "bg-rose-500 animate-pulse" : "bg-slate-300"
+                                : stage.hiringRisks > 0 ? "bg-rose-500 animate-pulse" : "bg-slate-300"
                         )}
                       />
                     </motion.button>
@@ -215,7 +233,7 @@ export function PipelineFlowTimeline({ requests, benchCount }: PipelineFlowTimel
                           "w-0.5 relative",
                           stage.key === "ACTIVE" ? "bg-emerald-300"
                             : stage.key === "RAMP_DOWN" ? "bg-indigo-300"
-                            : stage.hiringRisks > 0 ? "bg-rose-300" : "bg-slate-300",
+                              : stage.hiringRisks > 0 ? "bg-rose-300" : "bg-slate-300",
                           isUp ? "flex flex-col-reverse" : "flex flex-col"
                         )}
                       >
@@ -225,7 +243,7 @@ export function PipelineFlowTimeline({ requests, benchCount }: PipelineFlowTimel
                             "w-3 h-0.5 absolute left-[-5px]",
                             stage.key === "ACTIVE" ? "bg-emerald-300"
                               : stage.key === "RAMP_DOWN" ? "bg-indigo-300"
-                              : stage.hiringRisks > 0 ? "bg-rose-300" : "bg-slate-300"
+                                : stage.hiringRisks > 0 ? "bg-rose-300" : "bg-slate-300"
                           )}
                           style={{ [isUp ? "top" : "bottom"]: 0 }}
                         />
@@ -235,11 +253,13 @@ export function PipelineFlowTimeline({ requests, benchCount }: PipelineFlowTimel
                       <motion.div
                         initial={{ opacity: 0, y: isUp ? -15 : 15 }}
                         animate={{ opacity: 1, y: 0 }}
+                        whileHover={{ scale: 1.07, zIndex: 50 }}
                         transition={{ delay: idx * 0.1 + 0.15, duration: 0.3 }}
                         onClick={() => setSelectedStage(stage.key)}
+                        style={{ originX: "50%", originY: isUp ? "100%" : "0%" }}
                         className={cn(
-                          "absolute w-40 rounded-xl border p-2.5 shadow-sm bg-white/95 cursor-pointer select-none transition-all duration-300 hover:shadow-md",
-                          isUp ? "bottom-[24px] origin-bottom" : "top-[24px] origin-top",
+                          "absolute w-40 rounded-xl border p-2.5 shadow-sm bg-white/95 cursor-pointer select-none",
+                          isUp ? "bottom-[24px]" : "top-[24px]",
                           isSelected
                             ? stage.key === "ACTIVE"
                               ? "border-emerald-500 shadow-md shadow-emerald-50 ring-2 ring-emerald-500/10"
@@ -264,8 +284,8 @@ export function PipelineFlowTimeline({ requests, benchCount }: PipelineFlowTimel
                           <span className={cn(
                             "text-[9px] font-black",
                             stage.key === "ACTIVE" ? "text-emerald-600" :
-                            stage.key === "RAMP_DOWN" ? "text-indigo-500" :
-                            stage.hiringRisks > 0 ? "text-rose-600" : "text-slate-500"
+                              stage.key === "RAMP_DOWN" ? "text-indigo-500" :
+                                stage.hiringRisks > 0 ? "text-rose-600" : "text-slate-500"
                           )}>
                             {stage.key === "ACTIVE" ? "LIVE ✓" : stage.key === "RAMP_DOWN" ? "EXT / ↓" : `${stage.winProb}% win`}
                           </span>
@@ -274,20 +294,39 @@ export function PipelineFlowTimeline({ requests, benchCount }: PipelineFlowTimel
                         <p className={cn(
                           "text-[11px] font-black tracking-tight leading-tight mt-1 mb-1",
                           stage.key === "ACTIVE" ? "text-emerald-800" :
-                          stage.key === "RAMP_DOWN" ? "text-indigo-700" :
-                          stage.hiringRisks > 0 ? "text-rose-800" : "text-slate-850"
+                            stage.key === "RAMP_DOWN" ? "text-indigo-700" :
+                              stage.hiringRisks > 0 ? "text-rose-800" : "text-slate-850"
                         )}>
                           {stage.label}
                         </p>
 
-                        {/* Resource shortage only for pre-delivery stages */}
+                        {/* Resource shortage — badge triggers tooltip with per-deal reasons */}
                         {stage.hiringRisks > 0 && (
-                          <div className="text-[9px] font-extrabold text-rose-600 bg-rose-50/80 border border-rose-100 rounded px-1.5 py-0.5 mt-1 mb-1 flex items-center gap-1 select-none animate-pulse">
-                            <AlertTriangle className="h-2.5 w-2.5 text-rose-500 shrink-0" />
-                            <span>Resource Shortage</span>
-                          </div>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <div className="text-[9px] font-extrabold text-rose-600 bg-rose-50/80 border border-rose-100 rounded px-1.5 py-0.5 mt-1 mb-1 flex items-center gap-1 select-none animate-pulse cursor-help w-fit">
+                                  <AlertTriangle className="h-2.5 w-2.5 text-rose-500 shrink-0" />
+                                  <span>{stage.hiringRisks} Resource Shortage{stage.hiringRisks > 1 ? "s" : ""}</span>
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" className="!flex-col !items-start !gap-1 max-w-[220px] whitespace-normal">
+                                <p className="font-semibold text-[11px] border-b border-slate-700 pb-1 mb-0.5 w-full">Start &lt; 6mo — urgent hiring needed</p>
+                                {stage.atRiskDeals.slice(0, 5).map((deal, di) => (
+                                  <p key={di} className="text-[10px] leading-snug w-full">
+                                    <span className="font-semibold text-slate-200">{deal.client ?? "Unknown"}</span>
+                                    {deal.skillset ? <span className="text-slate-400"> · {deal.skillset}</span> : null}
+                                    <span className="block text-rose-400 font-semibold text-[9px]">{formatLeadTime(deal.monthsUntilStart, deal.likelyStart)}</span>
+                                  </p>
+                                ))}
+                                {stage.atRiskDeals.length > 5 && (
+                                  <p className="text-[10px] text-slate-400">+{stage.atRiskDeals.length - 5} more deals at risk</p>
+                                )}
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         )}
-                        
+
                         {/* Rich metrics details inside the card */}
                         <div className="mt-2 pt-1.5 border-t border-slate-100 space-y-1 text-[9px] font-semibold text-slate-500">
                           <div className="flex justify-between items-center">
@@ -319,69 +358,9 @@ export function PipelineFlowTimeline({ requests, benchCount }: PipelineFlowTimel
         </div>
       </SectionCard>
 
-      {/* ── Resourcing Snowball Bridge — stage-reactive ── */}
-      <SectionCard
-        title={`Resourcing Snowball Bridge — ${STAGE_FLOW_CONFIG.find(s => s.key === selectedStage)?.label ?? "Pipeline"}`}
-        description="Gross FTE demand → win-probability haircut → expected net demand for the selected stage"
-        action={<Scale className="h-4 w-4 text-indigo-900" />}
-      >
-        <div className="pt-4">
-          <ResponsiveContainer width="100%" height={260}>
-            <ComposedChart data={bridgeData} barCategoryGap="25%">
-              <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="#f1f5f9" />
-              <XAxis
-                dataKey="name"
-                tick={{ fontSize: 10, fill: "#64748b", fontWeight: "bold" }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <YAxis
-                tick={{ fontSize: 10, fill: "#64748b", fontWeight: "semibold" }}
-                axisLine={false}
-                tickLine={false}
-                width={24}
-                domain={[0, (dataMax: number) => Math.ceil(dataMax * 1.2)]}
-              />
-              <RechartsTooltip
-                content={({ active, payload }) => {
-                  if (!active || !payload?.length) return null;
-                  const entry = payload.find((p) => p.dataKey === "value");
-                  if (!entry) return null;
-                  const d = entry.payload;
-                  return (
-                    <div className="rounded-xl border border-slate-100 bg-slate-900 p-3 shadow-xl text-white text-xs space-y-1.5 backdrop-blur-md">
-                      <p className="font-black text-slate-200 border-b border-slate-800 pb-1 mb-1">{d.name}</p>
-                      <p className="flex justify-between gap-3 text-slate-400">
-                        Type: <span className="font-bold text-slate-50 capitalize">{d.type}</span>
-                      </p>
-                      <p className="flex justify-between gap-3 text-slate-400">
-                        Resourcing Value: <span className="font-black text-slate-50">{d.displayVal}</span>
-                      </p>
-                    </div>
-                  );
-                }}
-              />
-              {/* transparent base bar to support floating bridge effect */}
-              <Bar dataKey="base" stackId="bridgeWf" fill="transparent" stroke="none" />
-              <Bar dataKey="value" stackId="bridgeWf" radius={[4, 4, 0, 0]}>
-                {bridgeData.map((entry, idx) => (
-                  <Cell key={idx} fill={entry.fill} />
-                ))}
-                <LabelList
-                  dataKey="displayVal"
-                  position="top"
-                  fill="#475569"
-                  style={{ fontSize: 10, fontWeight: "black", letterSpacing: "-0.025em" }}
-                />
-              </Bar>
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
-      </SectionCard>
-
       {/* ── Pipeline Stage Details Card & Transition Velocity side-by-side ── */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-        
+
         {/* Stage details panel - Redesigned with visual ring and premium details */}
         {/* Stage details panel - Simplified */}
         <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm flex flex-col overflow-hidden lg:col-span-2">
@@ -417,12 +396,12 @@ export function PipelineFlowTimeline({ requests, benchCount }: PipelineFlowTimel
                       "flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-bold",
                       stageDetails.key === "ACTIVE" ? "bg-emerald-50 border-emerald-200 text-emerald-700"
                         : stageDetails.key === "RAMP_DOWN" ? "bg-indigo-50 border-indigo-200 text-indigo-700"
-                        : "bg-slate-50 border-slate-200 text-slate-700"
+                          : "bg-slate-50 border-slate-200 text-slate-700"
                     )}>
                       <span>
                         {stageDetails.key === "ACTIVE" ? "Confirmed — Live"
                           : stageDetails.key === "RAMP_DOWN" ? "Confirmed — Post-Delivery"
-                          : `${stageDetails.winProb}% Win Prob.`}
+                            : `${stageDetails.winProb}% Win Prob.`}
                       </span>
                     </div>
                   </div>
@@ -430,20 +409,6 @@ export function PipelineFlowTimeline({ requests, benchCount }: PipelineFlowTimel
                   <p className="text-xs text-slate-500 leading-relaxed font-medium">
                     {stageDetails.desc}
                   </p>
-
-                  {/* FTE statistics list */}
-                  <div className="grid grid-cols-2 gap-4 border-t border-b border-slate-100 py-4">
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Gross Demand</p>
-                      <p className="text-xl font-black text-slate-800 mt-0.5">{stageDetails.fte.toFixed(1)} <span className="text-xs font-medium text-slate-400">FTE</span></p>
-                      <p className="text-[9px] text-slate-400 mt-0.5">Raw request</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Expected Demand</p>
-                      <p className="text-xl font-black text-indigo-650 mt-0.5">{stageDetails.weightedFte.toFixed(1)} <span className="text-xs font-medium text-indigo-400">FTE</span></p>
-                      <p className="text-[9px] text-slate-400 mt-0.5">Win-adjusted</p>
-                    </div>
-                  </div>
 
                   {/* Stage Metrics list */}
                   <div className="space-y-2.5 text-xs">
@@ -501,7 +466,7 @@ export function PipelineFlowTimeline({ requests, benchCount }: PipelineFlowTimel
               {flowStats.slice(0, 5).map((stage, idx) => {
                 const nextStage = flowStats[idx + 1]!;
                 const conversion = stage.fte > 0 ? Math.round(nextStage.fte / stage.fte * 100) : 0;
-                
+
                 // Determine health index based on retention
                 let statusLabel = "Optimal Flow";
                 let statusColor = "text-emerald-600";
@@ -595,7 +560,7 @@ export function PipelineFlowTimeline({ requests, benchCount }: PipelineFlowTimel
             })()}
           </div>
         </SectionCard>      </div>
-      
+
     </div>
   );
 }

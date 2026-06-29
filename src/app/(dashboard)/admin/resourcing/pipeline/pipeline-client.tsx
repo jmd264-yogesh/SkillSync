@@ -2,20 +2,16 @@
 
 import { useState, useMemo, useRef, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { CLIENT_TIER_LABELS } from "@/lib/constants";
 import {
-  AlertTriangle, Star, Layers,
-  BarChart3, Lightbulb, GitFork, Filter,
+  AlertTriangle, Star, Layers, Filter,
 } from "lucide-react";
 import type { PipelineRequestWithContext } from "@/server/services/pipeline.service";
 import { PipelineAnalyticsClient } from "./analytics/pipeline-analytics-client";
-import { PipelineFlowTimeline } from "./analytics/pipeline-flow-timeline";
 
 // ─── Badge helpers ────────────────────────────────────────────
 
@@ -92,14 +88,8 @@ export function PipelineLedger({ requests }: { requests: PipelineRequestWithCont
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
-  // Exclude lost deals — same as Flow Timeline and Executive Dashboard tabs
+  // Exclude lost deals
   const liveRequests = useMemo(() => requests.filter((r) => !r.dealLostAt), [requests]);
-
-  const stage1Count = useMemo(() => liveRequests.filter((r) => getDealStageKey(r) === "INCEPTION").length, [liveRequests]);
-  const stage2Count = useMemo(() => liveRequests.filter((r) => getDealStageKey(r) === "MAKE_IT_REAL").length, [liveRequests]);
-  const scopingCount = useMemo(() => liveRequests.filter((r) => getDealStageKey(r) === "SCOPING").length, [liveRequests]);
-  // Only count pre-delivery stages — ACTIVE and RAMP_DOWN are already staffed
-  const hiringAlerts = liveRequests.filter((r) => r.hiringLeadTimeAlert && r.dealStage?.toUpperCase() !== "ACTIVE" && r.dealStage?.toUpperCase() !== "RAMP_DOWN").length;
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -145,33 +135,6 @@ export function PipelineLedger({ requests }: { requests: PipelineRequestWithCont
 
   return (
     <div className="space-y-6">
-      {/* Summary strip */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: "Opportunity Inception", count: stage1Count, color: "text-slate-700" },
-          { label: "Make It Real", count: stage2Count, color: "text-indigo-700" },
-          { label: "Scoping Approval", count: scopingCount, color: "text-emerald-700" },
-          { label: "Hiring Alerts (< 6mo)", count: hiringAlerts, color: hiringAlerts > 0 ? "text-rose-600" : "text-slate-400" },
-        ].map(({ label, count, color }) => (
-          <div key={label} className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-sm relative overflow-hidden">
-            <p className="text-[11px] font-bold text-slate-450 uppercase tracking-wider mb-1">{label}</p>
-            <p className={cn("text-2xl font-black mt-1 tabular-nums", color)}>{count}</p>
-          </div>
-        ))}
-      </div>
-
-      {hiringAlerts > 0 && (
-        <div className="flex items-start gap-3 rounded-lg bg-red-50/50 border border-red-100 p-4 text-xs text-red-800 backdrop-blur-sm">
-          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-red-600" />
-          <div>
-            <p className="font-extrabold">{hiringAlerts} deal{hiringAlerts !== 1 ? "s" : ""} require immediate hiring action</p>
-            <p className="text-[11px] text-red-650/90 font-medium mt-0.5">
-              Start dates within 6 months with no confirmed internal resources. Engage Talent Acquisition now.
-            </p>
-          </div>
-        </div>
-      )}
-
       {/* Report Slicers Panel */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
         <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
@@ -361,35 +324,9 @@ export function PipelineClient({
   benchCount: number;
 }) {
   return (
-    <div className="space-y-0">
-      <Tabs defaultValue="timeline" className="space-y-5">
-        <TabsList className="h-10 w-fit p-1 bg-slate-100/80 rounded-lg border border-slate-200/50">
-          <TabsTrigger value="timeline" className="text-xs font-bold uppercase tracking-wider px-4 py-1.5 flex items-center gap-1.5 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md transition-all">
-            <GitFork className="h-3.5 w-3.5 text-slate-500 data-[state=active]:text-indigo-600" />
-            Flow Timeline
-          </TabsTrigger>
-          <TabsTrigger value="analytics" className="text-xs font-bold uppercase tracking-wider px-4 py-1.5 flex items-center gap-1.5 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md transition-all">
-            <BarChart3 className="h-3.5 w-3.5 text-slate-500 data-[state=active]:text-indigo-600" />
-            Executive Dashboard
-          </TabsTrigger>
-          <TabsTrigger value="board" className="text-xs font-bold uppercase tracking-wider px-4 py-1.5 flex items-center gap-1.5 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md transition-all">
-            <Lightbulb className="h-3.5 w-3.5 text-slate-500 data-[state=active]:text-indigo-600" />
-            Pipeline Ledger
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="timeline" className="mt-0 outline-none">
-          <PipelineFlowTimeline requests={requests} benchCount={benchCount} />
-        </TabsContent>
-
-        <TabsContent value="analytics" className="mt-0 outline-none">
-          <PipelineAnalyticsClient requests={requests} benchCount={benchCount} />
-        </TabsContent>
-
-        <TabsContent value="board" className="mt-0 outline-none">
-          <PipelineLedger requests={requests} />
-        </TabsContent>
-      </Tabs>
+    <div className="space-y-6">
+      <PipelineAnalyticsClient requests={requests} benchCount={benchCount} />
+      <PipelineLedger requests={requests} />
     </div>
   );
 }

@@ -1,10 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { BarChart3, GitFork, Lightbulb, HelpCircle } from "lucide-react";
+import { GitFork, Lightbulb, HelpCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PipelineRequestWithContext } from "@/server/services/pipeline.service";
-import { PipelineFlowTimeline } from "../resourcing/pipeline/analytics/pipeline-flow-timeline";
 import { PipelineAnalyticsClient } from "../resourcing/pipeline/analytics/pipeline-analytics-client";
 import { PipelineLedger } from "../resourcing/pipeline/pipeline-client";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
@@ -90,7 +89,7 @@ interface AnalyticsClientProps {
   benchCount: number;
 }
 
-type TabId = "timeline" | "analytics" | "board";
+type TabId = "timeline" | "board";
 
 export function AnalyticsClient({ requests, benchCount }: AnalyticsClientProps) {
   const [activeTab, setActiveTab] = useState<TabId>("timeline");
@@ -100,7 +99,7 @@ export function AnalyticsClient({ requests, benchCount }: AnalyticsClientProps) 
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const tab = params.get("tab") as TabId;
-      if (tab && ["timeline", "analytics", "board"].includes(tab)) {
+      if (tab && ["timeline", "board"].includes(tab)) {
         setActiveTab(tab);
       }
     }
@@ -113,7 +112,6 @@ export function AnalyticsClient({ requests, benchCount }: AnalyticsClientProps) 
         <div className="flex bg-slate-100 p-1 rounded-full shadow-inner relative">
           {[
             { id: "timeline", label: "Flow Timeline", icon: GitFork },
-            { id: "analytics", label: "Executive Dashboard", icon: BarChart3 },
             { id: "board", label: "Pipeline Ledger", icon: Lightbulb },
           ].map((tab) => {
             const Icon = tab.icon;
@@ -137,9 +135,6 @@ export function AnalyticsClient({ requests, benchCount }: AnalyticsClientProps) 
 
       {/* Tab Panels */}
       {activeTab === "timeline" && (
-        <PipelineFlowTimeline requests={requests} benchCount={benchCount} />
-      )}
-      {activeTab === "analytics" && (
         <PipelineAnalyticsClient requests={requests} benchCount={benchCount} />
       )}
       {activeTab === "board" && (
