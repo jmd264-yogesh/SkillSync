@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { simulateProposition } from "@/server/actions/proposition-simulator";
+import { simulateProposition, findResourcesForSimulation } from "@/server/actions/proposition-simulator";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,6 +33,7 @@ import type {
 import type {
   RoleAllocation,
   BaselineAllocation,
+  RoleResourceMatch,
 } from "@/server/actions/proposition-simulator";
 
 // UK = senior client-facing consulting roles (partner-level at bottom)
@@ -168,6 +169,9 @@ export function SimulatorClient() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [resources, setResources] = useState<RoleResourceMatch[]>([]);
+  const [resourcesLoading, setResourcesLoading] = useState(false);
+
   function toggleSystem(s: SourceSystem) {
     setSourceSystems((prev) =>
       prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s],
@@ -197,6 +201,7 @@ export function SimulatorClient() {
     if (!canSimulate) return;
     setLoading(true);
     setError(null);
+    setResources([]);
     try {
       const data = await simulateProposition({
         proposition,
@@ -217,6 +222,20 @@ export function SimulatorClient() {
       setError(String(e));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleFindResources() {
+    const active = allocations.filter((a) => a.fte > 0);
+    if (active.length === 0) return;
+    setResourcesLoading(true);
+    try {
+      const data = await findResourcesForSimulation(active);
+      setResources(data);
+    } catch {
+      // silently ignore — show empty state
+    } finally {
+      setResourcesLoading(false);
     }
   }
 
@@ -491,6 +510,123 @@ export function SimulatorClient() {
               />
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Find Resources button + results */}
+      {narrative && !loading && allocations.some((a) => a.fte > 0) && (
+        <div className="space-y-4">
+          {resources.length === 0 && (
+            <div className="flex justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleFindResources}
+                disabled={resourcesLoading}
+                className="gap-2"
+              >
+                {resourcesLoading ? "Finding resources…" : "Find Matching Resources"}
+              </Button>
+            </div>
+          )}
+
+          {resourcesLoading && (
+            <Card className="border-0 shadow-sm">
+              <CardContent className="px-5 py-4 space-y-3">
+                {[...Array(4)].map((_, i) => (
+                  <Skeleton key={i} className="h-16 w-full rounded-lg" />
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {resources.length > 0 && (
+            <Card className="border-0 shadow-sm">
+              <CardHeader className="px-5 py-3 pb-2 flex flex-row items-center justify-between">
+                <CardTitle className="text-sm font-semibold text-slate-700">
+                  Resource Recommendations
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">
+                    — top candidates per role from the match engine
+                  </span>
+                </CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleFindResources}
+                  disabled={resourcesLoading}
+                  className="text-xs h-7"
+                >
+                  Refresh
+                </Button>
+              </CardHeader>
+              <CardContent className="px-5 pb-5 space-y-5">
+                {resources.map((rm) => (
+                  <div key={rm.role}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-xs font-semibold text-slate-700">{rm.role}</span>
+                      <span className="text-[10px] text-slate-400 font-medium">
+                        {rm.fte >= 1 ? `${rm.fte}× 100%` : `${Math.round(rm.fte * 100)}%`}
+                      </span>
+                      {rm.candidates.length === 0 && (
+                        <span className="text-[10px] text-amber-600 ml-1">No internal candidates — consider hire</span>
+                      )}
+                    </div>
+                    {rm.candidates.length > 0 && (
+                      <div className="rounded-lg border overflow-hidden">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="bg-slate-50 border-b">
+                              <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide w-24">Emp ID</th>
+                              <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Name</th>
+                              <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide hidden sm:table-cell">Role / COE</th>
+                              <th className="text-center px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide w-16">Score</th>
+                              <th className="text-center px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide w-20">Available</th>
+                              <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Recommendation</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {rm.candidates.map((c) => {
+                              const signalColor =
+                                c.signal === "REDEPLOY"
+                                  ? "text-emerald-700 bg-emerald-50 border-emerald-200"
+                                  : c.signal === "PARTIAL_HIRE"
+                                  ? "text-amber-700 bg-amber-50 border-amber-200"
+                                  : "text-red-700 bg-red-50 border-red-200";
+                              const hasRisk = c.riskFlags.length > 0;
+                              return (
+                                <tr key={c.employeeId} className={`${hasRisk ? "bg-amber-50/30" : "bg-white"} hover:bg-slate-50/60 transition-colors`}>
+                                  <td className="px-3 py-2.5 font-mono font-semibold text-slate-700">{c.employeeCode}</td>
+                                  <td className="px-3 py-2.5">
+                                    <span className="font-medium text-slate-800">{c.name}</span>
+                                    {hasRisk && (
+                                      <span className="ml-1.5 text-[9px] text-amber-600 font-semibold uppercase">
+                                        {c.riskFlags.slice(0, 2).join(" · ")}
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2.5 text-slate-500 hidden sm:table-cell">
+                                    {c.jobName ?? c.designationName ?? "—"}
+                                    {c.coeName && <span className="text-slate-400 ml-1">· {c.coeName}</span>}
+                                  </td>
+                                  <td className="px-3 py-2.5 text-center">
+                                    <span className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-bold border ${signalColor}`}>
+                                      {c.matchScore}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-2.5 text-center text-slate-600 font-medium">{c.availableFTE}%</td>
+                                  <td className="px-3 py-2.5 text-slate-600 leading-snug max-w-xs">{c.recommendation}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 

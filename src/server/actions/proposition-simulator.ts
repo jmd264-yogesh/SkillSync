@@ -5,6 +5,7 @@ import { UnauthorizedError, ForbiddenError } from "@/lib/errors";
 import { genAI, MODELS } from "@/lib/ai/client";
 import { PROPOSITION_ROLES } from "@/lib/constants";
 import { lookupBaseline, HISTORICAL_REFERENCE_TABLE } from "@/lib/historical-allocations";
+import { computeMatchRanking } from "@/server/services/matching.service";
 import type { PropositionRole } from "@/lib/constants";
 import type { HistoricalAllocation } from "@/lib/historical-allocations";
 
@@ -236,4 +237,78 @@ Return only the JSON object.`;
   } catch {
     return { ...buildFallback(), baseline };
   }
+}
+
+// ── Resource matching ─────────────────────────────────────────────────────────
+
+export interface RoleCandidate {
+  employeeId: string;
+  employeeCode: string;
+  name: string;
+  jobName: string | null;
+  designationName: string | null;
+  coeName: string | null;
+  matchScore: number;
+  availableFTE: number;
+  signal: string;
+  riskFlags: string[];
+  recommendation: string;
+}
+
+export interface RoleResourceMatch {
+  role: string;
+  fte: number;
+  candidates: RoleCandidate[];
+}
+
+function deriveRecommendation(matchScore: number, availableFTE: number, signal: string, riskFlags: string[]): string {
+  if (riskFlags.includes("LEAVER")) return "Leaving soon — confirm notice period before committing";
+  if (riskFlags.includes("OVER_ALLOCATED")) return "Over-allocated — resolve before assigning";
+  if (signal === "HIRE") return "No internal match — consider external hire";
+  if (signal === "PARTIAL_HIRE") return matchScore >= 55 ? "Partial fit — skill gap; plan upskilling" : "Weak fit — prefer other candidates";
+  if (availableFTE >= 0.8 && matchScore >= 75) return "Strong match — available now, ready to deploy";
+  if (availableFTE >= 0.5 && matchScore >= 65) return "Good fit — sufficient availability";
+  if (availableFTE < 0.3) return "Limited availability — confirm capacity before committing";
+  return "Suitable — review allocation before confirming";
+}
+
+export async function findResourcesForSimulation(
+  allocations: { role: string; fte: number }[],
+): Promise<RoleResourceMatch[]> {
+  const session = await auth();
+  if (!session) throw new UnauthorizedError();
+  if (session.user.role !== "ADMIN") throw new ForbiddenError();
+
+  const activeRoles = allocations.filter((a) => a.fte > 0);
+
+  const results = await Promise.all(
+    activeRoles.map(async (alloc) => {
+      const candidates = await computeMatchRanking({
+        requiredSkills: [],
+        canonicalRoles: [alloc.role],
+        topN: 5,
+        internalFirst: true,
+      });
+
+      return {
+        role: alloc.role,
+        fte: alloc.fte,
+        candidates: candidates.map((c) => ({
+          employeeId: c.employeeId,
+          employeeCode: c.employeeCode,
+          name: c.name,
+          jobName: c.jobName,
+          designationName: c.designationName,
+          coeName: c.coeName,
+          matchScore: c.matchScore,
+          availableFTE: Math.round(c.availableFTE * 100),
+          signal: c.signal,
+          riskFlags: c.riskFlags as string[],
+          recommendation: deriveRecommendation(c.matchScore, c.availableFTE, c.signal, c.riskFlags as string[]),
+        })),
+      };
+    }),
+  );
+
+  return results;
 }
