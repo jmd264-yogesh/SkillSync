@@ -34,6 +34,7 @@ import type {
   RoleAllocation,
   BaselineAllocation,
   RoleResourceMatch,
+  CandidateScores,
 } from "@/server/actions/proposition-simulator";
 
 // UK = senior client-facing consulting roles
@@ -239,6 +240,89 @@ function TechStackPicker({
   );
 }
 
+// ── Score breakdown row ───────────────────────────────────────────────────────
+
+const SCORE_DIMS: { key: keyof CandidateScores; label: string; weight: string }[] = [
+  { key: "skill",        label: "Skill match",   weight: "32%" },
+  { key: "competency",   label: "Competency",    weight: "22%" },
+  { key: "availability", label: "Availability",  weight: "18%" },
+  { key: "billability",  label: "Billability",   weight: "10%" },
+  { key: "evidence",     label: "Evidence",      weight: "6%"  },
+];
+
+function scoreColor(s: number) {
+  if (s >= 75) return { bar: "bg-emerald-500", text: "text-emerald-700", icon: "✓" };
+  if (s >= 50) return { bar: "bg-amber-400",   text: "text-amber-700",   icon: "~" };
+  return              { bar: "bg-red-400",     text: "text-red-600",     icon: "✗" };
+}
+
+function ScoreBreakdown({
+  scores,
+  unmetSkills,
+}: {
+  scores: CandidateScores;
+  unmetSkills: string[];
+}) {
+  return (
+    <div className="flex flex-col sm:flex-row gap-5 px-4 py-3">
+      <div className="flex-1 min-w-0">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
+          Score Breakdown
+        </p>
+        <div className="space-y-1.5">
+          {SCORE_DIMS.map(({ key, label, weight }) => {
+            const val = scores[key];
+            const c = scoreColor(val);
+            return (
+              <div key={key} className="flex items-center gap-2">
+                <span className="text-xs text-slate-600 w-24 shrink-0">{label}</span>
+                <div className="flex-1 bg-slate-200 rounded-full h-1.5 overflow-hidden min-w-0">
+                  <div
+                    className={`${c.bar} h-full rounded-full transition-all`}
+                    style={{ width: `${val}%` }}
+                  />
+                </div>
+                <span className={`text-xs font-semibold tabular-nums w-7 text-right ${c.text}`}>
+                  {val}
+                </span>
+                <span className={`text-[10px] font-bold w-3 ${c.text}`}>{c.icon}</span>
+                <span className="text-[10px] text-slate-400 w-10 text-right">{weight}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      {unmetSkills.length > 0 && (
+        <div className="sm:w-48 shrink-0">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
+            Skill Gaps
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {unmetSkills.map((s) => (
+              <span
+                key={s}
+                className="text-[11px] bg-red-50 text-red-700 border border-red-200 px-2 py-0.5 rounded-full"
+              >
+                {s}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      {unmetSkills.length === 0 && scores.skill >= 75 && (
+        <div className="sm:w-48 shrink-0">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
+            Skill Coverage
+          </p>
+          <span className="text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-1 rounded-full">
+            All required skills matched
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Resource mode toggle ──────────────────────────────────────────────────────
 
 type ResourceMode = "ai" | "baseline";
@@ -311,6 +395,16 @@ export function SimulatorClient({ skills }: SimulatorClientProps) {
   const [resources, setResources] = useState<RoleResourceMatch[]>([]);
   const [resourcesLoading, setResourcesLoading] = useState(false);
   const [resourceMode, setResourceMode] = useState<ResourceMode>("ai");
+  const [expandedCandidates, setExpandedCandidates] = useState<Set<string>>(new Set());
+
+  function toggleCandidate(id: string) {
+    setExpandedCandidates((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   function toggleSystem(s: SourceSystem) {
     setSourceSystems((prev) =>
@@ -384,6 +478,7 @@ export function SimulatorClient({ skills }: SimulatorClientProps) {
     try {
       const data = await findResourcesForSimulation(source, skillsForMatching);
       setResources(data);
+      setExpandedCandidates(new Set());
     } catch {
       // silently ignore — show empty state
     } finally {
@@ -848,24 +943,13 @@ export function SimulatorClient({ skills }: SimulatorClientProps) {
                         <table className="w-full text-xs">
                           <thead>
                             <tr className="bg-slate-50 border-b">
-                              <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide w-24">
-                                Emp ID
-                              </th>
-                              <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
-                                Name
-                              </th>
-                              <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide hidden sm:table-cell">
-                                Role / COE
-                              </th>
-                              <th className="text-center px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide w-16">
-                                Score
-                              </th>
-                              <th className="text-center px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide w-20">
-                                Available
-                              </th>
-                              <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
-                                Recommendation
-                              </th>
+                              <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide w-24">Emp ID</th>
+                              <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Name</th>
+                              <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide hidden sm:table-cell">Role / COE</th>
+                              <th className="text-center px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide w-16">Score</th>
+                              <th className="text-center px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide w-20">Available</th>
+                              <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Why</th>
+                              <th className="w-8"></th>
                             </tr>
                           </thead>
                           <tbody className="divide-y">
@@ -877,44 +961,46 @@ export function SimulatorClient({ skills }: SimulatorClientProps) {
                                   ? "text-amber-700 bg-amber-50 border-amber-200"
                                   : "text-red-700 bg-red-50 border-red-200";
                               const hasRisk = c.riskFlags.length > 0;
+                              const isExpanded = expandedCandidates.has(c.employeeId);
                               return (
-                                <tr
-                                  key={c.employeeId}
-                                  className={`${
-                                    hasRisk ? "bg-amber-50/30" : "bg-white"
-                                  } hover:bg-slate-50/60 transition-colors`}
-                                >
-                                  <td className="px-3 py-2.5 font-mono font-semibold text-slate-700">
-                                    {c.employeeCode}
-                                  </td>
-                                  <td className="px-3 py-2.5">
-                                    <span className="font-medium text-slate-800">{c.name}</span>
-                                    {hasRisk && (
-                                      <span className="ml-1.5 text-[9px] text-amber-600 font-semibold uppercase">
-                                        {c.riskFlags.slice(0, 2).join(" · ")}
+                                <>
+                                  <tr
+                                    key={c.employeeId}
+                                    className={`${hasRisk ? "bg-amber-50/30" : "bg-white"} hover:bg-slate-50/60 transition-colors cursor-pointer`}
+                                    onClick={() => toggleCandidate(c.employeeId)}
+                                  >
+                                    <td className="px-3 py-2.5 font-mono font-semibold text-slate-700">{c.employeeCode}</td>
+                                    <td className="px-3 py-2.5">
+                                      <span className="font-medium text-slate-800">{c.name}</span>
+                                      {hasRisk && (
+                                        <span className="ml-1.5 text-[9px] text-amber-600 font-semibold uppercase">
+                                          {c.riskFlags.slice(0, 2).join(" · ")}
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="px-3 py-2.5 text-slate-500 hidden sm:table-cell">
+                                      {c.jobName ?? c.designationName ?? "—"}
+                                      {c.coeName && <span className="text-slate-400 ml-1">· {c.coeName}</span>}
+                                    </td>
+                                    <td className="px-3 py-2.5 text-center">
+                                      <span className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-bold border ${signalColor}`}>
+                                        {c.matchScore}
                                       </span>
-                                    )}
-                                  </td>
-                                  <td className="px-3 py-2.5 text-slate-500 hidden sm:table-cell">
-                                    {c.jobName ?? c.designationName ?? "—"}
-                                    {c.coeName && (
-                                      <span className="text-slate-400 ml-1">· {c.coeName}</span>
-                                    )}
-                                  </td>
-                                  <td className="px-3 py-2.5 text-center">
-                                    <span
-                                      className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-bold border ${signalColor}`}
-                                    >
-                                      {c.matchScore}
-                                    </span>
-                                  </td>
-                                  <td className="px-3 py-2.5 text-center text-slate-600 font-medium">
-                                    {c.availableFTE}%
-                                  </td>
-                                  <td className="px-3 py-2.5 text-slate-600 leading-snug max-w-xs">
-                                    {c.recommendation}
-                                  </td>
-                                </tr>
+                                    </td>
+                                    <td className="px-3 py-2.5 text-center text-slate-600 font-medium">{c.availableFTE}%</td>
+                                    <td className="px-3 py-2.5 text-slate-600 leading-snug max-w-xs">{c.recommendation}</td>
+                                    <td className="px-3 py-2.5 text-center text-slate-400">
+                                      <span className="text-[10px]">{isExpanded ? "▲" : "▼"}</span>
+                                    </td>
+                                  </tr>
+                                  {isExpanded && (
+                                    <tr key={`${c.employeeId}-detail`} className="bg-slate-50 border-b">
+                                      <td colSpan={7} className="p-0">
+                                        <ScoreBreakdown scores={c.scores} unmetSkills={c.unmetSkills} />
+                                      </td>
+                                    </tr>
+                                  )}
+                                </>
                               );
                             })}
                           </tbody>

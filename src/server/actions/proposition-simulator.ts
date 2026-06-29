@@ -72,30 +72,37 @@ Chennai roles (${CHENNAI_ROLES.join(", ")}):
   - Every additional source system adds engineering effort → more SW, SSE, TA, SE needed.
 
 ═══ SOURCE SYSTEM SCALING (additive on top of historical baseline) ═══
-Each source system requires connector development, data modelling, testing, and maintenance.
-When the number of source systems is known, add these headcounts to the historical baseline:
+CRITICAL: The historical baseline was built for projects with ZERO explicit source system overhead.
+Every source system — even just 1 — requires engineering effort: connector build, data modelling, testing,
+and ongoing maintenance. You MUST always add the following on top of baseline for ANY source count:
 
-  1–5 sources:   baseline only (no additional)
-  6–10 sources:  +1 SW, +0.5 SSE
-  11–15 sources: +2 SW, +1 SSE, +0.25 TA
-  16–20 sources: +3 SW, +1.5 SSE, +0.5 TA, +0.5 SE
-  21–30 sources: +4 SW, +2 SSE, +1 TA, +1 SE
-  30+ sources:   +5 SW, +3 SSE, +1.5 TA, +1.5 SE
+  1–2 sources:   +0.5 SW                              (connector build + testing)
+  3–5 sources:   +1 SW,  +0.5 SSE                     (one engineer dedicated + oversight)
+  6–10 sources:  +2 SW,  +1 SSE,  +0.25 TA
+  11–15 sources: +3 SW,  +1.5 SSE, +0.5 TA, +0.25 SE
+  16–20 sources: +4 SW,  +2 SSE,  +0.75 TA, +0.5 SE
+  21–30 sources: +5 SW,  +2.5 SSE, +1 TA,   +1 SE
+  30+ sources:   +6 SW,  +3 SSE,  +1.5 TA,  +1.5 SE
 
 Roles added: Software Engineer (SW), Senior Software Engineer (SSE),
 Technical Solutions Architect (TA), Solutions Enabler (SE) — Chennai only.
 UK roles stay at baseline regardless of source count.
+
+EXAMPLE: Finance · Build · Medium baseline = 1C + 1AC + 1SC + 1SE + 1SSE + 2SW.
+With 5 sources: add +1 SW + 0.5 SSE → final = 1C + 1AC + 1SC + 1SE + 1.5SSE + 3SW.
 
 ═══ HISTORICAL REFERENCE ═══
 ${HISTORICAL_REFERENCE_TABLE}
 
 ═══ INSTRUCTIONS ═══
 1. Start from the historical baseline for the given solution/phase/criticality.
-2. Apply source system scaling if sources are mentioned in context.
+2. If ANY source count is mentioned (even 1 source), ALWAYS apply the scaling table above.
+   It is NEVER correct to say "no adjustment needed" when sources are mentioned — even 3-5 sources
+   adds at least +1 SW and +0.5 SSE. Apply the exact tier from the table.
 3. Apply any other context adjustments (client complexity → UK roles; data complexity → Chennai).
 4. Return HEADCOUNT values: 1.0 = one person full-time, 0.5 = half-time, 2.0 = two people.
 5. Roles with no involvement = 0.
-6. In the narrative: state baseline used, source count detected (if any), and exact adjustments made.
+6. In the narrative: state (a) baseline used, (b) source count detected, (c) EXACT additions applied.
 
 You MUST return allocations for EXACTLY these roles (in this order):
 ${PROPOSITION_ROLES.map((r, i) => `${i + 1}. ${r}`).join("\n")}
@@ -273,6 +280,14 @@ Return only the JSON object.`;
 
 // ── Resource matching ─────────────────────────────────────────────────────────
 
+export interface CandidateScores {
+  skill: number;
+  competency: number;
+  availability: number;
+  billability: number;
+  evidence: number;
+}
+
 export interface RoleCandidate {
   employeeId: string;
   employeeCode: string;
@@ -284,6 +299,8 @@ export interface RoleCandidate {
   availableFTE: number;
   signal: string;
   riskFlags: string[];
+  scores: CandidateScores;
+  unmetSkills: string[];
   recommendation: string;
 }
 
@@ -293,14 +310,46 @@ export interface RoleResourceMatch {
   candidates: RoleCandidate[];
 }
 
-function deriveRecommendation(matchScore: number, availableFTE: number, signal: string, riskFlags: string[]): string {
+function deriveRecommendation(
+  matchScore: number,
+  availableFTE: number,
+  signal: string,
+  riskFlags: string[],
+  scores: { skill: number; competency: number; availability: number; billability: number; evidence: number },
+  unmetSkills: string[],
+): string {
   if (riskFlags.includes("LEAVER")) return "Leaving soon — confirm notice period before committing";
-  if (riskFlags.includes("OVER_ALLOCATED")) return "Over-allocated — resolve before assigning";
-  if (signal === "HIRE") return "No internal match — consider external hire";
-  if (signal === "PARTIAL_HIRE") return matchScore >= 55 ? "Partial fit — skill gap; plan upskilling" : "Weak fit — prefer other candidates";
-  if (availableFTE >= 0.8 && matchScore >= 75) return "Strong match — available now, ready to deploy";
-  if (availableFTE >= 0.5 && matchScore >= 65) return "Good fit — sufficient availability";
+  if (riskFlags.includes("OVER_ALLOCATED")) return "Over-allocated — resolve current assignment first";
+  if (signal === "HIRE") return "No internal role match — recommend external hire for this position";
+
+  const weakAreas: string[] = [];
+  const strongAreas: string[] = [];
+
+  if (scores.skill < 50) {
+    const gaps = unmetSkills.length > 0 ? ` (missing: ${unmetSkills.slice(0, 2).join(", ")})` : "";
+    weakAreas.push(`skill gap${gaps}`);
+  } else if (scores.skill >= 75) {
+    strongAreas.push("strong skill fit");
+  }
+
+  if (scores.availability < 40) weakAreas.push("low availability");
+  else if (scores.availability >= 75) strongAreas.push("fully available");
+
+  if (scores.competency < 50) weakAreas.push("competency gap");
+  else if (scores.competency >= 75) strongAreas.push("strong consulting profile");
+
+  if (availableFTE >= 0.75 && matchScore >= 75) {
+    const why = strongAreas.length > 0 ? ` — ${strongAreas.join(", ")}` : "";
+    return `Ready to deploy${why}`;
+  }
+  if (weakAreas.length > 0 && matchScore < 60) {
+    return `Weak fit — ${weakAreas.join("; ")}`;
+  }
+  if (weakAreas.length > 0) {
+    return `Good overall — note: ${weakAreas.join("; ")}`;
+  }
   if (availableFTE < 0.3) return "Limited availability — confirm capacity before committing";
+  if (signal === "PARTIAL_HIRE") return "Partial role match — upskilling likely needed";
   return "Suitable — review allocation before confirming";
 }
 
@@ -326,19 +375,34 @@ export async function findResourcesForSimulation(
       return {
         role: alloc.role,
         fte: alloc.fte,
-        candidates: candidates.map((c) => ({
-          employeeId: c.employeeId,
-          employeeCode: c.employeeCode,
-          name: c.name,
-          jobName: c.jobName,
-          designationName: c.designationName,
-          coeName: c.coeName,
-          matchScore: c.matchScore,
-          availableFTE: Math.round(c.availableFTE * 100),
-          signal: c.signal,
-          riskFlags: c.riskFlags as string[],
-          recommendation: deriveRecommendation(c.matchScore, c.availableFTE, c.signal, c.riskFlags as string[]),
-        })),
+        candidates: candidates.map((c) => {
+          const scores = {
+            skill:        Math.round(c.skillScore ?? 0),
+            competency:   Math.round(c.competencyScore ?? 0),
+            availability: Math.round(c.availabilityFit ?? 0),
+            billability:  Math.round(c.billabilityFit ?? 0),
+            evidence:     Math.round(c.evidenceStrength ?? 0),
+          };
+          const unmetSkills = (c.unmetSkills ?? []) as string[];
+          return {
+            employeeId:      c.employeeId,
+            employeeCode:    c.employeeCode,
+            name:            c.name,
+            jobName:         (c as unknown as Record<string, unknown>).jobName as string | null ?? null,
+            designationName: c.designationName,
+            coeName:         c.coeName,
+            matchScore:      c.matchScore,
+            availableFTE:    Math.round(c.availableFTE * 100),
+            signal:          c.signal,
+            riskFlags:       c.riskFlags as string[],
+            scores,
+            unmetSkills,
+            recommendation:  deriveRecommendation(
+              c.matchScore, c.availableFTE, c.signal, c.riskFlags as string[],
+              scores, unmetSkills,
+            ),
+          };
+        }),
       };
     }),
   );
