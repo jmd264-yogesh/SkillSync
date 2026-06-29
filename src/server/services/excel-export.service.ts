@@ -1408,21 +1408,25 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
       if (picked) break;
     }
 
-    // True pool exhaustion — all role-matching employees are already allocated.
-    // ONLY fall back to a shared resource when the role was recognised AND the pool was non-empty
-    // but every candidate had a ConflictTracker clash. If the pool was empty to begin with
-    // (no employees with the required role exist), do NOT pick a wrong-role employee — HIRE instead.
+    // Pool exhaustion fallback — only triggers when the role is recognised and at least one
+    // matching employee exists. Checks allocation capacity first: if someone has 25% remaining
+    // but the project needs 40%, they are skipped here just like in the cascade loop.
+    // Only if NO matching employee can supply the needed % do we fall through to HIRE.
     const anyRoleMatchExists = roleFiltered
       ? allScored.some((m) => employeeMatchesRole(m.jobName, parsed.canonicalRoles))
       : false;
     if (!picked && anyRoleMatchExists) {
-      // All correct-role candidates are allocated — pick the best one as a shared resource (flagged)
       const rolePool = allScored
         .filter((m) => employeeMatchesRole(m.jobName, parsed.canonicalRoles))
+        .filter((m) => !tracker.hasConflict(m.employeeId, windowStart, windowEnd, m.availableFTE, ctx.reqAllocationPct))
         .sort((a, b) => b.matchScore - a.matchScore);
-      picked = rolePool[0] ?? null;
-      poolExhausted = true;
-      if (picked && hardClaim) tracker.claim(picked.employeeId, windowStart, windowEnd, ctx.reqAllocationPct);
+      if (rolePool.length > 0) {
+        // All cascade windows were conflict-tracker clashes; pick next available as shared resource
+        picked = rolePool[0]!;
+        poolExhausted = true;
+        if (hardClaim) tracker.claim(picked.employeeId, windowStart, windowEnd, ctx.reqAllocationPct);
+      }
+      // If rolePool is empty after allocation filtering → no matching employee has enough capacity → HIRE
     }
 
     if (picked) {
