@@ -143,6 +143,84 @@ export const SERVICE_LINES = [
 
 export type ServiceLine = (typeof SERVICE_LINES)[number];
 
+export const PROPOSITION_ROLES = [
+  "Partner",
+  "Associate Partner",
+  "Principal",
+  "Manager",
+  "Senior Consultant",
+  "Consultant",
+  "Senior Associate Consultant",
+  "Associate Consultant",
+  "Intern",
+  "Partner Technology",
+  "Associate Partner Technology",
+  "Principal Technology Architect",
+  "Technical Solutions Architect",
+  "Senior Solutions Consultant",
+  "Solutions Consultant",
+  "Solutions Enabler",
+  "Senior Software Engineer",
+  "Software Engineer",
+  "Intern Technology",
+] as const;
+
+export type PropositionRole = (typeof PROPOSITION_ROLES)[number];
+
+export const SOURCE_SYSTEMS = [
+  "Salesforce",
+  "SAP",
+  "Oracle",
+  "Snowflake",
+  "Microsoft Azure",
+  "AWS",
+  "Google Cloud",
+  "Power BI",
+  "Tableau",
+  "Databricks",
+  "SQL Server",
+  "HubSpot",
+  "Workday",
+  "NetSuite",
+  "Looker",
+] as const;
+
+export type SourceSystem = (typeof SOURCE_SYSTEMS)[number];
+
+export const PROPOSITION_PROJECT_TYPES: Record<ServiceLine, Array<{ value: string; label: string }>> = {
+  "Due Diligence": [
+    { value: "D_AND_D", label: "Discovery & Design" },
+    { value: "DATA_PLATFORM_BUILD", label: "Data Platform Build" },
+    { value: "TACTICAL_BUILD", label: "Tactical Build" },
+  ],
+  "Data Advisory": [
+    { value: "DATA_SCIENCE", label: "Data Science" },
+    { value: "AI_PROJECT", label: "AI Project" },
+    { value: "TACTICAL_BUILD", label: "Tactical Build" },
+    { value: "OTHER", label: "Other" },
+  ],
+  "Core Reporting": [
+    { value: "TACTICAL_BUILD", label: "Tactical Build" },
+    { value: "ENTERPRISE_BUILD", label: "Enterprise Build" },
+    { value: "FULL_STACK", label: "Full Stack" },
+  ],
+  "Value Creation": [
+    { value: "VALUE_CREATION", label: "Value Creation" },
+    { value: "DATA_SCIENCE", label: "Data Science" },
+    { value: "AI_PROJECT", label: "AI Project" },
+  ],
+  "Exit Support": [
+    { value: "D_AND_D", label: "Discovery & Design" },
+    { value: "FULL_STACK", label: "Full Stack" },
+    { value: "DATA_PLATFORM_BUILD", label: "Data Platform Build" },
+  ],
+  "Managed Service": [
+    { value: "MS_PROJECT", label: "MS Project" },
+    { value: "ENTERPRISE_BUILD", label: "Enterprise Build" },
+    { value: "OTHER", label: "Other" },
+  ],
+};
+
 export const CLIENT_TIER_BOOST: Record<string, number> = {
   GOLD: 10,
   SILVER: 5,
