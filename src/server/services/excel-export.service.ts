@@ -1113,24 +1113,44 @@ function toPlan(
   return [stageTag, prioTag, availTag, roleTag, coeTag, poolTag, crossTag, adjTag, partialAllocTag].filter(Boolean).join(" · ");
 }
 
-// ── Window-aware conflict tracking ────────────────────────────────────────────
+// ── Window-aware, allocation-percentage-aware conflict tracking ───────────────
 /**
- * Tracks which date intervals each employee is committed to.
- * Unlike a simple Set<id>, this allows the same employee to be recommended
- * for non-overlapping pipeline requests (e.g., project ending in Aug can take
- * a September request).
+ * Tracks promised allocation (0–1) per employee per time window.
+ * An employee can be assigned to multiple projects in the same window as long
+ * as the sum of promised allocations does not exceed their available FTE.
+ * Non-overlapping windows are always independent (project ending Aug → free in Sep).
  */
-class ConflictTracker {
-  private readonly schedule = new Map<string, Array<{ start: Date; end: Date }>>();
+class AllocationTracker {
+  private readonly schedule = new Map<string, Array<{ start: Date; end: Date; allocPct: number }>>();
 
-  hasConflict(employeeId: string, windowStart: Date, windowEnd: Date): boolean {
+  /** Total allocation already promised to this employee in the given window (0–1). */
+  promisedAlloc(employeeId: string, windowStart: Date, windowEnd: Date): number {
     const intervals = this.schedule.get(employeeId) ?? [];
-    return intervals.some((iv) => iv.start <= windowEnd && iv.end >= windowStart);
+    return intervals
+      .filter((iv) => iv.start <= windowEnd && iv.end >= windowStart)
+      .reduce((sum, iv) => sum + iv.allocPct, 0);
   }
 
-  claim(employeeId: string, windowStart: Date, windowEnd: Date): void {
+  /**
+   * Returns true if the employee cannot supply at least neededPct in this window.
+   * availableFTE is the employee's current free capacity from DB/timesheets;
+   * we subtract any pipeline allocations already promised in this run.
+   */
+  hasConflict(
+    employeeId: string,
+    windowStart: Date,
+    windowEnd: Date,
+    availableFTE: number,
+    neededPct: number,
+  ): boolean {
+    const alreadyPromised = this.promisedAlloc(employeeId, windowStart, windowEnd);
+    const remainingCapacity = Math.max(0, availableFTE - alreadyPromised);
+    return remainingCapacity < neededPct;
+  }
+
+  claim(employeeId: string, windowStart: Date, windowEnd: Date, allocPct: number): void {
     const intervals = this.schedule.get(employeeId) ?? [];
-    intervals.push({ start: windowStart, end: windowEnd });
+    intervals.push({ start: windowStart, end: windowEnd, allocPct });
     this.schedule.set(employeeId, intervals);
   }
 }
@@ -1248,7 +1268,7 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
   });
 
   // ── Step 5: Score and assign ───────────────────────────────────────────────
-  const tracker = new ConflictTracker();
+  const tracker = new AllocationTracker();
 
   interface RowAssignment {
     match: MatchResultV2;
@@ -1376,12 +1396,12 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
 
     for (const level of cascadeLevels) {
       for (const candidate of level.pool) {
-        if (!tracker.hasConflict(candidate.employeeId, windowStart, windowEnd)) {
+        if (!tracker.hasConflict(candidate.employeeId, windowStart, windowEnd, candidate.availableFTE, ctx.reqAllocationPct)) {
           picked          = candidate;
           pickedTier      = availabilityTier(candidate.availableFTE);
           pickedCrossCoe  = level.crossCoe;
           pickedActingRole = level.actingRole;
-          if (hardClaim) tracker.claim(candidate.employeeId, windowStart, windowEnd);
+          if (hardClaim) tracker.claim(candidate.employeeId, windowStart, windowEnd, ctx.reqAllocationPct);
           break;
         }
       }
@@ -1402,7 +1422,7 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
         .sort((a, b) => b.matchScore - a.matchScore);
       picked = rolePool[0] ?? null;
       poolExhausted = true;
-      if (picked && hardClaim) tracker.claim(picked.employeeId, windowStart, windowEnd);
+      if (picked && hardClaim) tracker.claim(picked.employeeId, windowStart, windowEnd, ctx.reqAllocationPct);
     }
 
     if (picked) {
