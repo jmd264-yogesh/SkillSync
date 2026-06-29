@@ -1294,6 +1294,9 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
     // Deal Lost — skip matching entirely; row is copied as-is with no appended data
     if (conversionPct === 0) continue;
 
+    // Already resourced — no need to run matching; original recommendation is preserved in output
+    if (String(ctx.srcRow[C.STATUS] ?? "").trim().toLowerCase() === "resourced") continue;
+
     const reqSkills  = textToRequiredSkills(req.skillset ?? "", allSkills);
     // Parse role from DB value; if the DB value is null/stale, fall back to the raw xlsx cell.
     let parsed = normalizeResourceRequest(req.resourcesRequested);
@@ -1507,6 +1510,13 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
 
     const req  = dbRequests[i];
     const asgn = req ? assignments.get(req.id) : null;
+    const isResourced = String(srcRow[C.STATUS] ?? "").trim().toLowerCase() === "resourced";
+
+    // Resourced rows: preserve original values as-is, skip matching output and HIRE placeholder
+    if (isResourced) {
+      outputAoa.push([...srcRow, ...Array<null>(14).fill(null)]);
+      continue;
+    }
 
     // Fill existing pipeline xlsx columns — always overwrite to avoid stale values from prior runs
     if (asgn) {
