@@ -20,23 +20,44 @@ export async function recommendForPipelineRequest(
   const request = await db.pipelineRequest.findUnique({ where: { id } });
   if (!request) return [];
 
-  // Match skills whose names appear within the skillset string (correct direction for partial tokens like "Python 3.x")
+  // Bidirectional skill resolution: forward (skillset contains skill name) + reverse
   const skillsetText = (request.skillset ?? "").toLowerCase();
   let requiredSkills: { skillId: string; skillName: string; requiredLevel: number }[] = [];
 
   if (skillsetText.length > 0) {
     const allSkills = await db.skill.findMany({ select: { id: true, name: true } });
+    const keywords = skillsetText
+      .split(/[\s,;/()]+/)
+      .map((k) => k.trim())
+      .filter((k) => k.length >= 3);
+
     requiredSkills = allSkills
-      .filter((s) => skillsetText.includes(s.name.toLowerCase()))
+      .filter((s) => {
+        const sl = s.name.toLowerCase();
+        if (skillsetText.includes(sl)) return true;
+        const primary = sl.split(/\s*[–-]\s*/)[0]?.trim() ?? sl;
+        return keywords.some((kw) => sl.includes(kw) || primary.includes(kw));
+      })
       .map((s) => ({ skillId: s.id, skillName: s.name, requiredLevel: 3 }));
   }
 
   const parsed = normalizeResourceRequest(request.resourcesRequested ?? null);
 
+  // Compute project window from likelyStart + numberOfWeeks so leave/availability is anchored
+  const windowStart = request.likelyStart ?? undefined;
+  let windowEnd: Date | undefined;
+  if (request.likelyStart && request.numberOfWeeks) {
+    windowEnd = new Date(request.likelyStart.getTime() + request.numberOfWeeks * 7 * 24 * 60 * 60 * 1000);
+  } else if (request.likelyStart) {
+    windowEnd = new Date(request.likelyStart.getTime() + 90 * 24 * 60 * 60 * 1000);
+  }
+
   return computeMatchRanking({
     requiredSkills,
     canonicalRoles: parsed.canonicalRoles.length > 0 ? parsed.canonicalRoles : undefined,
-    topN: 10,
+    windowStart: windowStart ? new Date(windowStart) : undefined,
+    windowEnd: windowEnd ? new Date(windowEnd) : undefined,
+    topN: 15,
   });
 }
 
@@ -50,6 +71,7 @@ export async function recommendAdHoc(
   const validated = recommendAdHocSchema.parse(input);
   return computeMatchRanking({
     requiredSkills: validated.requiredSkills,
+    canonicalRoles: validated.canonicalRoles,
     windowStart: validated.windowStart ? new Date(validated.windowStart) : undefined,
     windowEnd: validated.windowEnd ? new Date(validated.windowEnd) : undefined,
     topN: validated.topN,

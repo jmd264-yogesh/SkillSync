@@ -46,7 +46,7 @@ import { MATCH_WEIGHTS_V2 } from "@/lib/constants";
 import { explainMatch } from "@/lib/ai/rationale";
 import { normalizeResourceRequest, employeeMatchesRole } from "@/lib/role-mapping";
 import type { ParsedRole } from "@/lib/role-mapping";
-import type { MatchResult, MatchSignal, SkillBreakdown } from "@/server/services/matching.service";
+import type { MatchResult, MatchSignal, SkillBreakdown, RiskFlag } from "@/server/services/matching.service";
 
 // ── Source file ───────────────────────────────────────────────────────────────
 const SOURCE_REL = path.join("reference_files", "07. 260624_Pipeline_Details.xlsx");
@@ -232,23 +232,13 @@ function applyStyle(ws: XLSX.WorkSheet, r: number, c: number, style: CellStyle) 
 // ── Extended MatchResult ──────────────────────────────────────────────────────
 /** v2 match result — extends base MatchResult with all new scoring dimensions. */
 export interface MatchResultV2 extends MatchResult {
-  /** Experience depth score (0–100) — proxy for years-of-experience per required skill */
   experienceScore: number;
-  /** COE alignment score (0 or 100) — employee COE appears in skillset/solution text */
   coeAlignmentScore: number;
-  /** True if employee's COE name appears in the request skillset/solution */
   coeAligned: boolean;
-  /** Employee's COE name (null if no COE assigned) */
   empCoeName: string | null;
-  /** Active risk flags: GHOST, SHADOW, LEAVER, OVER_ALLOCATED, UNDER_LEVELLED */
-  riskFlags: string[];
-  /** Earliest date the employee's current allocation ends within the request window */
   releasableFrom: Date | null;
-  /** True if allocation ends within the first 2 weeks of the request window */
   isRollingOff: boolean;
-  /** Seniority gap vs requested role: +ve = over-levelled, −ve = under-levelled */
   designationGap: number;
-  /** Raw free capacity (0–1) in the actual request window from allocation date overlaps */
   windowFreeCapacity: number;
 }
 
@@ -277,7 +267,7 @@ async function fetchAllEmployees() {
             select: {
               status: true,
               name: true,
-              // Gap 7: tech/proposition COE now fetched for multi-signal COE alignment
+              clientId: true,
               techCoe: true,
               propositionCoe: true,
               category: true,
@@ -506,11 +496,10 @@ function computeRiskFlags(
   emp: EmployeeRow,
   designationGap: number,
   avgUtil: number,
-): string[] {
-  const flags: string[] = [];
+): RiskFlag[] {
+  const flags: RiskFlag[] = [];
   if (isLeavingSoon(emp)) flags.push("LEAVER");
   if (emp.shadowFlags.some((f) => f.flagType === "GHOST"))   flags.push("GHOST");
-  if (emp.shadowFlags.some((f) => f.flagType === "SHADOW"))  flags.push("SHADOW");
   if (avgUtil > 1.0)       flags.push("OVER_ALLOCATED");
   if (designationGap <= -2) flags.push("UNDER_LEVELLED");
   return flags;
@@ -716,11 +705,26 @@ function scoreEmployee(
     signal = "REDEPLOY";
   }
 
+  // ── Notice period + planned leave (base MatchResult fields) ─────────────────
+  const now = new Date();
+  const noticeDaysRemaining = emp.dateOfResignation
+    ? Math.max(0, Math.round((emp.dateOfResignation.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
+    : null;
+
+  const previousClients = [
+    ...new Set(
+      emp.allocations
+        .map((a) => a.project.clientId ?? a.project.name)
+        .filter((c): c is string => Boolean(c)),
+    ),
+  ].slice(0, 5);
+
   return {
     employeeId: emp.id,
     employeeCode: emp.employeeCode,
     name: emp.name,
     jobName: emp.jobName,
+    location: emp.location,
     skillScore,
     competencyScore,
     availabilityFit: effectiveAvailabilityFit,
@@ -731,12 +735,20 @@ function scoreEmployee(
     unmetSkills: unmet,
     availableFTE,
     signal,
+    // Base MatchResult new fields
+    designationName: emp.designation?.name ?? null,
+    designationLevel: emp.designation?.level ?? null,
+    coeName: emp.coe?.name ?? null,
+    noticeDaysRemaining,
+    plannedLeaveDays: 0,  // excel export uses window-aware availability; leave from snapshots
+    previousClients,
+    totalProjects: distinctProjectCount,
+    riskFlags,
     // v2 extensions
     experienceScore,
     coeAlignmentScore,
     coeAligned,
     empCoeName: emp.coe?.name ?? null,
-    riskFlags,
     releasableFrom,
     isRollingOff,
     designationGap,

@@ -12,6 +12,7 @@ export const recommendAdHocSchema = z.object({
       requiredLevel: z.number().int().min(1).max(5),
     }),
   ).min(1),
+  canonicalRoles: z.array(z.string()).optional(),
   windowStart: z.string().datetime().optional(),
   windowEnd: z.string().datetime().optional(),
   topN: z.number().int().min(1).max(50).optional(),
