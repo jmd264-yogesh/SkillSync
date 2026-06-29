@@ -556,14 +556,14 @@ function deriveRequestCoeDomain(skillset: string | null, solution: string | null
 }
 
 // ── Role adjacency for cross-role cascade ─────────────────────────────────────
-// Adjacency is intentionally asymmetric (grade-aware):
-//   Software Engineer → no adjacent fallback; exact match only (SSE is over-graded, Enabler is different family)
-//   Senior Software Engineer → SE can act up (experienced SE flagged as "acting as SSE")
-//   Solutions Enabler → SE or SSE as fallback
+// Only grade-based acting-up is permitted within the same role family.
+//   Software Engineer → no fallback (SSE is over-graded; exact match only)
+//   Senior Software Engineer → SE can act up (flagged as "acting as SSE")
+//   Solutions Enabler → no fallback (separate family from SE/SSE; cannot substitute)
 const ROLE_ADJACENCY: Record<string, string[]> = {
-  "senior software engineer": ["software engineer", "solutions enabler"],
+  "senior software engineer": ["software engineer"],
   "software engineer":        [],
-  "solutions enabler":        ["senior software engineer", "software engineer"],
+  "solutions enabler":        [],
 };
 
 function getAdjacentRoles(canonicalRoles: string[]): string[] {
