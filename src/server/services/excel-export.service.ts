@@ -1409,24 +1409,18 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
     }
 
     // Pool exhaustion fallback — only triggers when the role is recognised and at least one
-    // matching employee exists. Checks allocation capacity first: if someone has 25% remaining
-    // but the project needs 40%, they are skipped here just like in the cascade loop.
-    // Only if NO matching employee can supply the needed % do we fall through to HIRE.
+    // matching employee exists but all were claimed in the cascade. Picks the best role-matching
+    // candidate as a shared resource (flagged as poolExhausted) rather than falling to HIRE.
     const anyRoleMatchExists = roleFiltered
       ? allScored.some((m) => employeeMatchesRole(m.jobName, parsed.canonicalRoles))
       : false;
     if (!picked && anyRoleMatchExists) {
       const rolePool = allScored
         .filter((m) => employeeMatchesRole(m.jobName, parsed.canonicalRoles))
-        .filter((m) => !tracker.hasConflict(m.employeeId, windowStart, windowEnd, m.availableFTE, ctx.reqAllocationPct))
         .sort((a, b) => b.matchScore - a.matchScore);
-      if (rolePool.length > 0) {
-        // All cascade windows were conflict-tracker clashes; pick next available as shared resource
-        picked = rolePool[0]!;
-        poolExhausted = true;
-        if (hardClaim) tracker.claim(picked.employeeId, windowStart, windowEnd, ctx.reqAllocationPct);
-      }
-      // If rolePool is empty after allocation filtering → no matching employee has enough capacity → HIRE
+      picked = rolePool[0] ?? null;
+      poolExhausted = true;
+      if (picked && hardClaim) tracker.claim(picked.employeeId, windowStart, windowEnd, ctx.reqAllocationPct);
     }
 
     if (picked) {
