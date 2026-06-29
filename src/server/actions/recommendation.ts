@@ -58,9 +58,10 @@ export async function recommendForPipelineRequest(
     windowStart: windowStart ? new Date(windowStart) : undefined,
     windowEnd: windowEnd ? new Date(windowEnd) : undefined,
     topN: 15,
-    // Internal-first is a platform policy — always enabled
     internalFirst: true,
     clientTier: request.clientTier ?? undefined,
+    techCoe: request.techCoe ?? undefined,
+    propositionCoe: request.propositionCoe ?? undefined,
   });
 }
 

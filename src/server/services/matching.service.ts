@@ -49,6 +49,8 @@ export interface MatchResult {
   // Track record
   previousClients: string[];            // distinct project/client names from allocations
   totalProjects: number;
+  // COE affinity
+  coeAffinityMatch: boolean;            // candidate has worked on a project matching the requested COE
   // Risk
   riskFlags: RiskFlag[];
 }
@@ -61,8 +63,10 @@ export async function computeMatchRanking(params: {
   topN?: number;
   clientTier?: string;       // "GOLD" | "SILVER" | "BRONZE" — boosts availability score
   internalFirst?: boolean;   // sort REDEPLOY→PARTIAL_HIRE→HIRE after scoring
+  techCoe?: string;          // preferred tech COE — candidates with matching project history get a boost
+  propositionCoe?: string;   // preferred proposition COE — same boost logic
 }): Promise<MatchResult[]> {
-  const { requiredSkills, canonicalRoles, windowStart, windowEnd, topN = 20, clientTier, internalFirst = true } = params;
+  const { requiredSkills, canonicalRoles, windowStart, windowEnd, topN = 20, clientTier, internalFirst = true, techCoe, propositionCoe } = params;
   const tierBoost = CLIENT_TIER_BOOST[clientTier ?? ""] ?? 0;
   const hasSkillFilter = requiredSkills.length > 0;
   const hasRoleFilter = canonicalRoles && canonicalRoles.length > 0;
@@ -95,7 +99,7 @@ export async function computeMatchRanking(params: {
       allocations: {
         include: {
           project: {
-            select: { status: true, name: true, clientId: true, category: true },
+            select: { status: true, name: true, clientId: true, category: true, techCoe: true, propositionCoe: true },
           },
         },
       },
@@ -200,6 +204,19 @@ export async function computeMatchRanking(params: {
       });
       if (hasRoleHistory) expBoost += 15;
     }
+
+    // COE affinity: boost candidates who have worked on projects in the requested COE
+    const coeAffinityMatch =
+      (techCoe || propositionCoe) &&
+      emp.allocations.some(
+        (a) =>
+          (techCoe && a.project.techCoe === techCoe) ||
+          (propositionCoe && a.project.propositionCoe === propositionCoe),
+      )
+        ? true
+        : false;
+    if (coeAffinityMatch) expBoost += 20;
+
     const distinctProjectCount = new Set(emp.allocations.map((a) => a.projectId)).size;
     expBoost += Math.min(distinctProjectCount * 4, 20);
     const evidenceStrength = Math.min(totalEvidence * 10 + expBoost, 100);
@@ -291,6 +308,7 @@ export async function computeMatchRanking(params: {
       plannedLeaveDays,
       previousClients,
       totalProjects: distinctProjectCount,
+      coeAffinityMatch,
       riskFlags,
     };
   });

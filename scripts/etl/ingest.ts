@@ -205,6 +205,9 @@ async function ingestProjects(): Promise<IngestStats> {
     const techCoe = String(row["tech_coe"] ?? "").trim() || null;
     const propositionCoe = String(row["proposition_coe"] ?? "").trim() || null;
     const clientId = String(row["CLIENT_ID"] ?? "").trim() || null;
+    const projectKey = String(row["project_key"] ?? "").trim() || null;
+    const reporterExternalId = String(row["reporter_id"] ?? "").trim() || null;
+    const approverExternalId = String(row["approver_id"] ?? "").trim() || null;
     const statusRaw = String(row["project_status"] ?? "").toUpperCase().trim();
     const status = ["PLANNING", "ACTIVE", "COMPLETED", "ON_HOLD"].includes(statusRaw)
       ? statusRaw as "PLANNING" | "ACTIVE" | "COMPLETED" | "ON_HOLD"
@@ -212,7 +215,7 @@ async function ingestProjects(): Promise<IngestStats> {
 
     await db.project.upsert({
       where: { externalId },
-      update: { category: category as never, status, techCoe, propositionCoe, clientId, startDate, endDate, plannedEndDate: endDate },
+      update: { category: category as never, status, techCoe, propositionCoe, clientId, startDate, endDate, plannedEndDate: endDate, projectKey, reporterExternalId, approverExternalId },
       create: {
         externalId,
         name: externalId,
@@ -224,6 +227,9 @@ async function ingestProjects(): Promise<IngestStats> {
         startDate,
         endDate,
         plannedEndDate: endDate,
+        projectKey,
+        reporterExternalId,
+        approverExternalId,
       },
     });
     stats.loaded++;

@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import {
   Users, CheckCircle2, AlertTriangle, XCircle,
   Briefcase, MapPin, Shield, Star, Clock, Calendar, ChevronDown, ChevronUp, User,
-  Layers, GraduationCap,
+  Layers, GraduationCap, Building2, Tag,
 } from "lucide-react";
 import type { PipelineRequest } from "@prisma/client";
 import type { MatchResult, RiskFlag } from "@/server/services/matching.service";
@@ -111,6 +111,11 @@ function CandidateCard({ result, rank }: { result: MatchResult; rank: number }) 
                   </Badge>
                 ))}
                 <TrainingReadinessBadge score={result.trainingReadiness} />
+                {result.coeAffinityMatch && (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-teal-50 text-teal-700 border-teal-200">
+                    <Building2 className="h-2.5 w-2.5 mr-0.5" />COE Match
+                  </Badge>
+                )}
               </div>
               <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground flex-wrap">
                 {result.jobName && (
@@ -307,9 +312,15 @@ export function MatchClient({ pipelineRequests }: MatchClientProps) {
               </SelectTrigger>
               <SelectContent>
                 {filteredRequests.map((r) => {
-                  const label = `${r.sowSigned ? "✓ " : ""}${r.client ?? "Unknown client"} - ${r.requestType ?? "N/A"}${r.cluster ? ` (Cluster ${r.cluster})` : ""}`;
+                  const parts: string[] = [];
+                  if (r.sowSigned) parts.push("✓");
+                  if (r.projectKey) parts.push(`[${r.projectKey}]`);
+                  parts.push(r.client ?? "Unknown client");
+                  if (r.solution) parts.push(`· ${r.solution}`);
+                  if (r.requestType) parts.push(`— ${r.requestType}`);
+                  if (r.cluster) parts.push(`(Cluster ${r.cluster})`);
                   return (
-                    <SelectItem key={r.id} value={r.id}>{label}</SelectItem>
+                    <SelectItem key={r.id} value={r.id}>{parts.join(" ")}</SelectItem>
                   );
                 })}
               </SelectContent>
@@ -383,6 +394,44 @@ export function MatchClient({ pipelineRequests }: MatchClientProps) {
                     <Badge variant="outline" className="text-[11px] bg-green-50 text-green-700 border-green-200">
                       SOW Signed ✓
                     </Badge>
+                  )}
+                  {selected.typeOfProject && (
+                    <Badge variant="outline" className="text-[11px]">
+                      <Tag className="h-2.5 w-2.5 mr-0.5" />
+                      {selected.typeOfProject}
+                    </Badge>
+                  )}
+                  {selected.techCoe && (
+                    <Badge variant="outline" className="text-[11px] bg-teal-50 text-teal-700 border-teal-200">
+                      <Building2 className="h-2.5 w-2.5 mr-0.5" />
+                      Tech COE: {selected.techCoe}
+                    </Badge>
+                  )}
+                  {selected.propositionCoe && (
+                    <Badge variant="outline" className="text-[11px] bg-indigo-50 text-indigo-700 border-indigo-200">
+                      <Building2 className="h-2.5 w-2.5 mr-0.5" />
+                      Prop COE: {selected.propositionCoe}
+                    </Badge>
+                  )}
+                  {selected.clientExternalId && (
+                    <Badge variant="outline" className="text-[11px]">
+                      Client ID: {selected.clientExternalId}
+                    </Badge>
+                  )}
+                  {selected.projectKey && (
+                    <Badge variant="outline" className="text-[11px]">
+                      Key: {selected.projectKey}
+                    </Badge>
+                  )}
+                  {selected.reporterExternalId && (
+                    <span className="text-[11px] text-muted-foreground">
+                      Reporter: {selected.reporterExternalId}
+                    </span>
+                  )}
+                  {selected.approverExternalId && (
+                    <span className="text-[11px] text-muted-foreground">
+                      Approver: {selected.approverExternalId}
+                    </span>
                   )}
                   {selected.skillset && (
                     <span className="text-muted-foreground truncate max-w-xs" title={selected.skillset}>
