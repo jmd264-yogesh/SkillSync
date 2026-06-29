@@ -937,6 +937,7 @@ function scoreEmployee(
     plannedLeaveDays: 0,  // excel export uses window-aware availability; leave from snapshots
     previousClients,
     totalProjects: distinctProjectCount,
+    coeAffinityMatch: false,  // excel export uses its own coeAligned field; base field not used here
     riskFlags,
     trainingReadiness: emp.competencies.length > 0
       ? Math.round((emp.competencies.reduce((s, c) => s + c.score, 0) / emp.competencies.length / 5) * 100)

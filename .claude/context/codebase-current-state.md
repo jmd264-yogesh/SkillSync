@@ -1,6 +1,6 @@
 # Codebase Current State — SkillSphere Platform
 
-_Generated: 2026-06-28 | Covers actual implemented code, not planned modules_
+_Generated: 2026-06-30 | Covers actual implemented code, not planned modules_
 
 ---
 
@@ -93,6 +93,7 @@ src/
 │   │   ├── forecast.ts            # getForecastAction()
 │   │   ├── gap-analysis.ts / learning-paths.ts / my-skills.ts
 │   │   ├── project-health.ts      # getProjectHealthAction()
+│   │   ├── proposition-simulator.ts # simulateProposition() — baseline lookup + AI recommendation
 │   │   ├── recommendation.ts      # recommendForPipelineRequest(), recommendAdHoc(), getPipelineRequests()
 │   │   ├── resource-management.ts
 │   │   ├── review-cycle.ts
@@ -137,9 +138,10 @@ src/
 │   │       ├── agent.ts            # runCopilotTurn() — tool dispatch + context management
 │   │       └── tools.ts            # COPILOT_TOOLS — 7 Gemini function declarations
 │   ├── auth.ts
-│   ├── constants.ts                # MATCH_WEIGHTS added: skill 0.35, comp 0.25, avail 0.20, bill 0.12, evidence 0.08
+│   ├── constants.ts                # MATCH_WEIGHTS, ENGAGEMENT_PHASES, CRITICALITY_LEVELS, SOLUTION_TYPES, SERVICE_LINES, PROPOSITION_ROLES, SOURCE_SYSTEMS
 │   ├── db.ts
 │   ├── errors.ts
+│   ├── historical-allocations.ts   # HISTORICAL_ALLOCATIONS lookup table (34 rows), lookupBaseline(), HISTORICAL_REFERENCE_TABLE (AI prompt string)
 │   ├── role-mapping.ts             # normalizeResourceRequest() + employeeMatchesRole() — canonical role lookup
 │   └── utils.ts
 ├── scripts/
@@ -208,7 +210,8 @@ src/
 ### Pipeline & Resourcing CoLab
 | Model | Key Fields |
 |-------|-----------|
-| `PipelineRequest` | id, client, requestType, solution, skillset, resourcesRequested, numberOfWeeks, likelyStart, sowSigned (bool), dealStage, cluster, priority, status, comments |
+| `PipelineRequest` | id, client, requestType, solution, skillset, resourcesRequested, numberOfWeeks, likelyStart, sowSigned (bool), dealStage, cluster, priority, status, comments, **techCoe, propositionCoe, projectKey, reporterExternalId, approverExternalId, clientExternalId, typeOfProject** (all nullable, enriched from project data) |
+| `Project` | id, name, …, **projectKey, reporterExternalId, approverExternalId, techCoe, propositionCoe** (nullable enrichment fields) |
 | `IngestReport` | id, runAt, totalRows, successRows, errorRows, notes |
 
 ### Feedback & Promotion Readiness
@@ -230,21 +233,68 @@ src/
 ### Six Pages Under `/admin/resourcing/`
 
 #### Match Engine (`/resourcing/match`)
+- Pipeline request dropdown: label format `[projectKey] · solution — requestType (Cluster N)`
+- Context card shows: `typeOfProject` badge, `techCoe` (teal), `propositionCoe` (indigo), `clientExternalId`, `projectKey`, `reporterExternalId`, `approverExternalId`
 - Select pipeline request → `recommendForPipelineRequest()` computes ranked candidates
 - Scoring: `matchScore = Skill×35% + Competency×25% + Availability×20% + Billability×12% + Evidence×8%`
 - Role filtering: `resourcesRequested` parsed by `normalizeResourceRequest()` → `canonicalRoles` → Prisma OR filter on `jobName`
+- **COE affinity boost**: +20 pts if candidate has prior allocation on a project matching `techCoe` or `propositionCoe`; shown as "COE Match" teal badge on candidate card
 - Result card headline: `[EMP042] Name · JobTitle — Match: 87/100`
 - Skill breakdown accordion; signal filter (REDEPLOY / PARTIAL_HIRE / HIRE)
 - **Excel Download button** — triggers `downloadResourceExcel()` server action → browser Blob download
+
+##### How Match Engine Scores Candidates
+```
+1. Role filter: Prisma OR query on jobName for each canonicalRole from normalizeResourceRequest()
+2. Skill score:   coverage% × 0.6 + depth% × 0.4  (coverage = skills met / skills required)
+3. Competency:    avg(competency scores) / 5 × 100  (from Competency table)
+4. Availability:  (1 − avgUtilisation) × 100 + clientTierBoost  (from UtilisationSnapshot)
+5. Billability:   (1 − avgBillableUtil) × 100  (lower billable = more available for redeployment)
+6. Evidence:      min(totalEvidence×10 + expBoost, 100)
+   - expBoost += 15 per ExperienceDoc whose techStack matches required skill names
+   - expBoost += 15 if candidate has prior allocation in a matching role
+   - expBoost += 20 if coeAffinityMatch (prior project in requested techCoe or propositionCoe)
+   - expBoost += 4 per distinct project, capped at 20
+7. Final: matchScore = skill×0.35 + comp×0.25 + avail×0.20 + bill×0.12 + evidence×0.08
+8. Signal: REDEPLOY (available, skills met), PARTIAL_HIRE (partial fit), HIRE (skill gap)
+9. Sort: REDEPLOY → PARTIAL_HIRE → HIRE, then matchScore DESC within each tier
+```
+
+##### How Match Engine Feeds Excel Export
+The same `computeMatchRanking()` service powers both the UI and the CLI Excel export (`pnpm export:excel`):
+- For each pipeline request (SOW-signed first), `normalizeResourceRequest(resourcesRequested)` → canonical roles → `computeMatchRanking()`
+- **Pool depletion**: a global `Set<string>` of claimed `employeeCodes`; once assigned, an employee is removed from the pool
+- **Availability tiers** (assignment priority): Tier 3 (>50% free) > Tier 2 (>20%) > Tier 1 (>0%) > Tier 0 (fully allocated)
+- **Role exact-match guard**: `employeeMatchesRole(jobName, canonicalRoles)` filters pool before scoring
+- **AI rationale**: `explainMatch()` called on up to 15 REDEPLOY rows per batch; written to column "AI Rationale" in Excel
+- Output columns appended to pipeline Excel: Employee ID (employeeCode), Match Score, Skill Score, Competency Score, Signal, Recommended Action, Unmet Skills, Plan, AI Rationale, Confidence
 
 #### Health Radar (`/resourcing/health`)
 - Per-project RAG signals: billability leakage %, shadow resource count, releasable FTE, ramp-down detection
 - `health-client.tsx` with COE + status filters
 
 #### Capacity Simulator (`/resourcing/simulator`)
-- Input: project type + count + start date + weeks
-- AI agentic: `buildStaffingPlans()` → 2–3 conflict-checked plans (Plan A: redeploy-heavy, Plan B: delivery-safe)
-- Tool loop: `get_demand` → `find_candidates` (role-filtered) → `check_health_impact` → `record_plan`
+Redesigned as a role-mix simulator for upcoming pipeline projects using historical project patterns.
+
+**Inputs:** Proposition (service line) · Project Type (17 SOLUTION_TYPES) · Phase (Design & Discovery / Build) · Criticality (Stable / Medium / High) · Start Date · Weeks + optional Source Systems chips + optional Additional Context textarea
+
+**Two outputs shown side-by-side after running:**
+
+1. **Historical Baseline** (deterministic — no AI)
+   - `lookupBaseline(projectType, phase, criticality)` queries `HISTORICAL_ALLOCATIONS` (34 rows in `src/lib/historical-allocations.ts`)
+   - If exact match found: shows FTE counts per role (e.g. "0.25 FTE Technical Solutions Architect")
+   - If no match: shows a "no exact match" placeholder with nearest-pattern guidance
+
+2. **AI Recommendation** (Gemini `gemini-1.5-pro` via `simulateProposition()`)
+   - System prompt includes the full `HISTORICAL_REFERENCE_TABLE` as a grounding blueprint
+   - AI must anchor closely to historical patterns; deviations require justification in narrative
+   - Returns percentage allocation across all 19 canonical proposition roles (UK + Chennai panels)
+   - If `phase`/`criticality` selected and baseline found → specific baseline FTE counts embedded in AI prompt as primary anchor
+   - Source systems bias: each system increases Chennai engineering role % (SSE, SW, SE, TA)
+   - Additional context: optional free-text, wrapped in `<context>` tags in AI prompt
+
+**Constants added:** `ENGAGEMENT_PHASES` (const array), `CRITICALITY_LEVELS` (const array) in `src/lib/constants.ts`
+**Types exported:** `EngagementPhase`, `CriticalityLevel` (from constants), `BaselineAllocation`, `RoleAllocation`, `PropositionSimulatorResult` (from server action)
 
 #### Pipeline Outlook (`/resourcing/outlook`)
 - 6-month demand vs supply by cluster/month
@@ -283,16 +333,31 @@ employeeMatchesRole("Senior Consultant", ["Senior Consultant", "Principal"]) →
 ### MatchResult Interface
 ```typescript
 interface MatchResult {
-  employeeId: string;    // UUID — for React keys and DB joins
-  employeeCode: string;  // business key (e.g. "EMP042") — primary display identifier
+  employeeId: string;          // UUID — for React keys and DB joins
+  employeeCode: string;        // business key (e.g. "EMP042") — primary display identifier
   name: string;
   jobName: string | null;
-  skillScore, competencyScore, availabilityFit, billabilityFit, evidenceStrength: number;
-  matchScore: number;
+  location: string | null;
+  skillScore: number;          // 0–100; coverage × depth
+  competencyScore: number;     // 0–100; from Competency table
+  availabilityFit: number;     // 0–100; (1 − utilisation) × 100 + tierBoost
+  billabilityFit: number;      // 0–100; (1 − billableUtil) × 100
+  evidenceStrength: number;    // 0–100; expBoost accumulates from docs, role history, COE affinity
+  matchScore: number;          // weighted composite
+  trainingReadiness: number;   // 0–100; avg competency score
   skillBreakdown: SkillBreakdown[];
   unmetSkills: string[];
-  availableFTE: number;
+  availableFTE: number;        // 0–1
   signal: "REDEPLOY" | "HIRE" | "PARTIAL_HIRE";
+  designationName: string | null;
+  designationLevel: number | null;
+  coeName: string | null;
+  noticeDaysRemaining: number | null;  // null = not resigning
+  plannedLeaveDays: number;           // total leave days within project window
+  previousClients: string[];
+  totalProjects: number;
+  coeAffinityMatch: boolean;          // true = prior project in requested techCoe or propositionCoe
+  riskFlags: RiskFlag[];              // LEAVER, OVER_ALLOCATED, GHOST, SKILL_GAP_FOR_ROLE, ON_LEAVE, UNDER_LEVELLED, LOW_EXPERIENCE, UNDER_UTILIZED
 }
 ```
 
@@ -360,9 +425,10 @@ See "Resourcing CoLab" section above.
 ## Services Reference (Resourcing CoLab)
 
 ### `src/server/services/matching.service.ts`
-- `computeMatchRanking({ requiredSkills, canonicalRoles?, windowStart?, windowEnd?, topN? })` → `MatchResult[]`
+- `computeMatchRanking({ requiredSkills, canonicalRoles?, windowStart?, windowEnd?, topN?, clientTier?, internalFirst?, techCoe?, propositionCoe? })` → `MatchResult[]`
 - Role filtering: Prisma `OR` on `jobName contains` for each canonical role
-- Sorted by matchScore DESC
+- COE affinity: `+20` to evidenceStrength when candidate has prior allocation in a project with matching `techCoe` or `propositionCoe`
+- Internal-first sort: REDEPLOY → PARTIAL_HIRE → HIRE, then matchScore DESC within tier
 
 ### `src/server/services/availability.service.ts`
 - `getEmployeeAvailability(filters?)` → `EmployeeAvailability[]` — utilisation status, releasableFrom date

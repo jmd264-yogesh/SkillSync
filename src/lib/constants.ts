@@ -142,6 +142,12 @@ const SOLUTION_TYPE_LABELS: Record<string, string> = {
 export const PROPOSITION_PROJECT_OPTIONS: Array<{ value: string; label: string }> =
   SOLUTION_TYPES.map((s) => ({ value: s, label: SOLUTION_TYPE_LABELS[s] ?? s }));
 
+export const ENGAGEMENT_PHASES = ["Design & Discovery", "Build"] as const;
+export type EngagementPhase = (typeof ENGAGEMENT_PHASES)[number];
+
+export const CRITICALITY_LEVELS = ["Stable", "Medium", "High"] as const;
+export type CriticalityLevel = (typeof CRITICALITY_LEVELS)[number];
+
 export const SERVICE_LINES = [
   "Due Diligence",
   "Data Advisory",
