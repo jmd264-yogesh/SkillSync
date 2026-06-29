@@ -773,16 +773,35 @@ function scoreEmployee(
   );
 
   // ── Signal ─────────────────────────────────────────────────────────────────
+  // Technical executor roles (SE / SSE / Enabler) are generalist implementors
+  // who can be onboarded to a new stack — always prefer internal over external hire.
+  // Consulting/management roles need more specific expertise; stricter thresholds apply.
+  const techExec = canonicalRoles.some((r) =>
+    ["software engineer", "senior software engineer", "solutions enabler"].includes(r.toLowerCase()),
+  );
+  const redeployMinCoverage = techExec ? 0.5 : 0.7;
+  const redeployMinSkill    = techExec ? 40  : 60;
+  const hireCovCutoff       = techExec ? 0.2 : 0.4; // below this → external hire (consulting only)
+
   let signal: MatchSignal;
   if (riskFlags.includes("LEAVER")) {
     // Leavers should never be deployed — force external hire signal
     signal = "HIRE";
   } else if (!hasSkillFilter) {
-    signal = availableFTE > 0.5 ? "REDEPLOY" : availableFTE > 0.1 ? "PARTIAL_HIRE" : "HIRE";
-  } else if (coveragePct < 0.7 || skillScore < 60 || availableFTE === 0) {
-    signal = coveragePct < 0.4 ? "HIRE" : "PARTIAL_HIRE";
-  } else {
+    // No DB skills matched from pipeline skillset — signal driven purely by availability
+    if (availableFTE > 0.3)               signal = "REDEPLOY";
+    else if (availableFTE > 0.05)         signal = "PARTIAL_HIRE";
+    else if (techExec)                    signal = "PARTIAL_HIRE"; // SSE/SE: internal coordination over external hire
+    else                                  signal = "HIRE";
+  } else if (coveragePct >= redeployMinCoverage && skillScore >= redeployMinSkill && availableFTE > 0.1) {
     signal = "REDEPLOY";
+  } else if (!techExec && coveragePct < hireCovCutoff) {
+    // Consulting roles: low skill coverage alone justifies external hire
+    signal = "HIRE";
+  } else {
+    // techExec: always PARTIAL_HIRE — internal coordination / training preferred over external hire
+    // Consulting mid-coverage: PARTIAL_HIRE (coverage ≥ hireCovCutoff but below REDEPLOY threshold)
+    signal = "PARTIAL_HIRE";
   }
 
   // ── Notice period + planned leave (base MatchResult fields) ─────────────────
@@ -1117,9 +1136,18 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
       .sort((a, b) => b.matchScore - a.matchScore)
       .slice(0, 3);
 
-    // Selection order: availability tier DESC → matchScore DESC within tier
-    // Any Tier-3 employee (>50% free) beats all lower-tier employees regardless of match score.
+    // Selection order (priority descending):
+    //   1. Non-GHOST before GHOST — ghost flags indicate unreliable/non-performing resource
+    //   2. Non-HIRE before HIRE  — any internal capacity preferred over external hire signal
+    //   3. Availability tier DESC — most-free employee within tier wins
+    //   4. Match score DESC       — highest quality within availability tier
     const selectionOrder = [...allScored].sort((a, b) => {
+      const ghostA = a.riskFlags.includes("GHOST") ? 0 : 1;
+      const ghostB = b.riskFlags.includes("GHOST") ? 0 : 1;
+      if (ghostA !== ghostB) return ghostB - ghostA;
+      const hireA = a.signal === "HIRE" ? 0 : 1;
+      const hireB = b.signal === "HIRE" ? 0 : 1;
+      if (hireA !== hireB) return hireB - hireA;
       const ta = availabilityTier(a.availableFTE);
       const tb = availabilityTier(b.availableFTE);
       if (ta !== tb) return tb - ta;
@@ -1145,6 +1173,12 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
       const fullScored = activeCandidates
         .map((emp) => scoreEmployee(emp, reqSkills, scoreOpts))
         .sort((a, b) => {
+          const ghostA = a.riskFlags.includes("GHOST") ? 0 : 1;
+          const ghostB = b.riskFlags.includes("GHOST") ? 0 : 1;
+          if (ghostA !== ghostB) return ghostB - ghostA;
+          const hireA = a.signal === "HIRE" ? 0 : 1;
+          const hireB = b.signal === "HIRE" ? 0 : 1;
+          if (hireA !== hireB) return hireB - hireA;
           const ta = availabilityTier(a.availableFTE);
           const tb = availabilityTier(b.availableFTE);
           if (ta !== tb) return tb - ta;
