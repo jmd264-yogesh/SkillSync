@@ -236,6 +236,7 @@ export interface MatchResultV2 extends MatchResult {
   coeAlignmentScore: number;
   coeAligned: boolean;
   empCoeName: string | null;
+  requestedDomain: string | null;  // COE domain derived from request skillset
   releasableFrom: Date | null;
   isRollingOff: boolean;
   designationGap: number;
@@ -429,29 +430,102 @@ function computeExperienceScore(
   return Math.min(100, blended + bonusPts);
 }
 
+// ── Skill → COE domain mapping ────────────────────────────────────────────────
+// Used to derive the COE domain the REQUEST actually needs (from its skillset),
+// rather than relying on the solution column label or the employee's own COE.
+// Each entry: [lowercase keyword, coe name that owns this skill domain].
+const SKILL_COE_DOMAIN: Array<[string, string]> = [
+  // Data Engineering — specific first
+  ["pyspark",             "data engineering"],
+  ["snowflake",           "data engineering"],
+  ["airflow",             "data engineering"],
+  ["kafka",               "data engineering"],
+  ["dbt",                 "data engineering"],
+  ["scd",                 "data engineering"],   // Slowly Changing Dimensions
+  ["etl",                 "data engineering"],
+  ["data pipeline",       "data engineering"],
+  ["data model",          "data engineering"],
+  ["data warehouse",      "data engineering"],
+  ["anomaly detection",   "data engineering"],
+  ["ltv",                 "data engineering"],
+  // DevOps
+  ["kubernetes",          "devops"],
+  ["docker",              "devops"],
+  ["terraform",           "devops"],
+  ["jenkins",             "devops"],
+  ["helm",                "devops"],
+  ["ansible",             "devops"],
+  ["ci/cd",               "devops"],
+  ["deployment troubleshooting", "devops"],
+  // Frontend
+  ["shadcn",              "frontend"],
+  ["tailwind",            "frontend"],
+  ["vue",                 "frontend"],
+  ["angular",             "frontend"],
+  ["css",                 "frontend"],
+  ["html",                "frontend"],
+  // Full Stack / Backend (web/API skills)
+  ["express",             "full stack"],
+  ["graphql",             "full stack"],
+  ["oauth",               "full stack"],
+  ["branching",           "full stack"],
+  ["node.js",             "full stack"],
+  ["playwright",          "full stack"],
+  ["selenium",            "full stack"],
+  ["scrapy",              "full stack"],   // web scraping is a full-stack activity
+  ["react",               "full stack"],
+  ["javascript",          "full stack"],
+  ["typescript",          "full stack"],
+  ["commits",             "full stack"],
+  ["diffs",               "full stack"],
+  ["rest api",            "full stack"],
+  ["microservices",       "backend"],
+  ["spring",              "backend"],
+  ["django",              "backend"],
+  ["fastapi",             "backend"],
+];
+
+/** Returns the most-voted COE domain for this request based on skillset keywords. */
+function deriveRequestCoeDomain(skillset: string | null, solution: string | null): string | null {
+  const text = `${skillset ?? ""} ${solution ?? ""}`.toLowerCase();
+  const votes: Record<string, number> = {};
+  for (const [kw, domain] of SKILL_COE_DOMAIN) {
+    if (text.includes(kw)) {
+      votes[domain] = (votes[domain] ?? 0) + 1;
+    }
+  }
+  if (Object.keys(votes).length === 0) return null;
+  return Object.entries(votes).sort((a, b) => b[1] - a[1])[0]![0]!;
+}
+
 // ── COE alignment ─────────────────────────────────────────────────────────────
-// Multi-signal check — gap 7 fix (tech_coe / proposition_coe previously unused).
-// Scoring: 0–100 across up to 4 signals.
-//  Signal A (weight 2): employee COE name appears in pipeline skillset/solution text
-//  Signal B (weight 1): active project's techCoe or propositionCoe overlaps request
-//  Signal C (weight 1): employee COE matches their active project's COE domain
+// Multi-signal check. All signals are now anchored to the REQUEST's derived COE
+// domain so a Data Engineering employee never appears aligned to a Full Stack request.
+//  Signal A  (weight 2): employee COE name directly in pipeline request text
+//  Signal A2 (weight 2): employee COE matches skill-derived domain for this request
+//  Signal B  (weight 1): active project techCoe/propositionCoe overlaps request keywords
+//  Signal C  (weight 1): employee COE = derived domain AND matches their active project COE
+// aligned = true only when signals ≥ 2 (requires at least one weight-2 signal)
 function computeCoeAlignment(
   emp: EmployeeRow,
   reqSkillset: string | null,
   reqSolution: string | null,
-): { aligned: boolean; score: number } {
+): { aligned: boolean; score: number; requestedDomain: string | null } {
   const coeName = emp.coe?.name?.toLowerCase().trim();
   const searchText = `${reqSkillset ?? ""} ${reqSolution ?? ""}`.toLowerCase();
   const searchTokens = searchText.split(/[\s,;/()]+/).filter((t) => t.length >= 3);
+  const requestedDomain = deriveRequestCoeDomain(reqSkillset, reqSolution);
 
   let signals = 0;
-  const MAX_SIGNALS = 4; // sum of all possible signal weights
+  const MAX_SIGNALS = 4;
 
-  // Signal A (weight 2): employee COE name directly in pipeline request text
+  // Signal A (weight 2): employee COE name literally in request text
   if (coeName && searchText.includes(coeName)) signals += 2;
 
-  // Signal B (weight 1): any active project's techCoe or propositionCoe overlaps
-  // with the pipeline request skillset/solution keywords
+  // Signal A2 (weight 2): employee COE matches the skill-derived domain
+  if (signals < 2 && coeName && requestedDomain && coeName === requestedDomain) signals += 2;
+
+  // Signal B (weight 1): active project techCoe/propositionCoe overlaps request keywords
   const activeProjCoes = emp.allocations
     .filter((a) => a.project.status !== "COMPLETED")
     .flatMap((a) => [
@@ -466,13 +540,19 @@ function computeCoeAlignment(
     )
   ) signals++;
 
-  // Signal C (weight 1): employee COE aligns with their current delivery domain
-  if (coeName && activeProjCoes.some((pc) => pc.includes(coeName) || coeName.includes(pc))) {
+  // Signal C (weight 1): employee COE = derived domain AND they're on matching project
+  // (guarded by derived domain — prevents false positives from in-own-domain projects)
+  if (
+    requestedDomain &&
+    coeName &&
+    coeName === requestedDomain &&
+    activeProjCoes.some((pc) => pc.includes(coeName) || coeName.includes(pc))
+  ) {
     signals++;
   }
 
   const score = Math.round((signals / MAX_SIGNALS) * 100);
-  return { aligned: signals >= 1, score };
+  return { aligned: signals >= 2, score, requestedDomain };
 }
 
 // ── Designation seniority gap ─────────────────────────────────────────────────
@@ -660,7 +740,7 @@ function scoreEmployee(
   const evidenceStrength = Math.min(totalEvidence * 10 + expBoost, 100);
 
   // ── COE Alignment ──────────────────────────────────────────────────────────
-  const { aligned: coeAligned, score: coeAlignmentScore } = computeCoeAlignment(
+  const { aligned: coeAligned, score: coeAlignmentScore, requestedDomain } = computeCoeAlignment(
     emp,
     reqSkillset,
     reqSolution,
@@ -749,6 +829,7 @@ function scoreEmployee(
     coeAlignmentScore,
     coeAligned,
     empCoeName: emp.coe?.name ?? null,
+    requestedDomain,
     releasableFrom,
     isRollingOff,
     designationGap,
@@ -819,7 +900,7 @@ function toAction(
     : "";
   const riskNote     = match.riskFlags.length > 0 ? ` ⚠ ${match.riskFlags.join(", ")}` : "";
   const sharedNote   = poolExhausted ? " (shared — pool exhausted)" : "";
-  const coeTag       = match.coeAligned ? ` ✓ COE:${match.empCoeName ?? ""}` : "";
+  const coeTag       = match.coeAligned ? ` ✓ COE:${match.requestedDomain ?? match.empCoeName ?? ""}` : "";
   const rollingTag   = match.isRollingOff ? " (rolling off — natural window)" : "";
 
   if (match.signal === "HIRE") {
@@ -1144,7 +1225,7 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
       // Deterministic fallback when AI times out or is unavailable
       const dim  = m.skillScore >= m.competencyScore ? "technical skills" : "consulting competency";
       const risk = m.unmetSkills.length > 0 ? `missing ${m.unmetSkills[0]}` : "availability constrained";
-      const coeNote  = m.coeAligned ? ` COE-aligned (${m.empCoeName}).` : "";
+      const coeNote  = m.coeAligned ? ` COE-aligned (${m.requestedDomain ?? m.empCoeName}).` : "";
       const riskNote = m.riskFlags.length > 0 ? ` Risk: ${m.riskFlags.join(", ")}.` : "";
       return `${m.name} leads on ${dim} (${m.matchScore}/100).${coeNote} Primary concern: ${risk}. Signal: ${m.signal}.${riskNote}`;
     }
@@ -1168,7 +1249,7 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
       const m    = asgn.match;
       const dim  = m.skillScore >= m.competencyScore ? "technical skills" : "consulting competency";
       const risk = m.unmetSkills.length > 0 ? `missing ${m.unmetSkills[0]}` : "availability limited";
-      const coeNote  = m.coeAligned ? ` COE-aligned (${m.empCoeName}).` : "";
+      const coeNote  = m.coeAligned ? ` COE-aligned (${m.requestedDomain ?? m.empCoeName}).` : "";
       const expNote  = m.experienceScore > 0 ? ` Experience depth: ${m.experienceScore}/100.` : "";
       const riskNote = m.riskFlags.length > 0 ? ` Risk: ${m.riskFlags.join(", ")}.` : "";
       asgn.rationale  = `${m.name} scores ${m.matchScore}/100. Strongest: ${dim}.${coeNote}${expNote} Risk: ${risk}.${riskNote}`;
@@ -1211,8 +1292,8 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
           asgn.match.experienceScore,                                        // 26 Experience Score
           Math.round(asgn.match.availableFTE * 100),                         // 27 Availability Score
           asgn.match.coeAligned                                              // 28 COE Alignment
-            ? `✓ ${asgn.match.empCoeName ?? "COE"}`
-            : "✗ No match",
+            ? `✓ ${asgn.match.requestedDomain ?? asgn.match.empCoeName ?? "COE"}`
+            : `✗ ${asgn.match.requestedDomain ?? "No match"}`,
           asgn.match.signal,                                                 // 29 Signal
           asgn.match.riskFlags.length > 0                                    // 30 Risk Flags
             ? asgn.match.riskFlags.join(", ")
