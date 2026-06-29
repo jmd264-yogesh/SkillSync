@@ -85,13 +85,27 @@ export const COMPETENCY_BEHAVIOURS = [
 
 export type CompetencyBehaviour = (typeof COMPETENCY_BEHAVIOURS)[number];
 
-// Match score weights (must sum to 1.0)
+// Match score weights v1 — 5 dimensions (used by matching.service.ts / UI)
+// Must sum to 1.0
 export const MATCH_WEIGHTS = {
   skill: 0.35,
   competency: 0.25,
   availability: 0.20,
   billability: 0.12,
   evidence: 0.08,
+} as const;
+
+// Match score weights v2 — 7 dimensions (used by excel-export.service.ts / CLI)
+// Adds Experience Depth (proxy for years-of-experience) and COE Alignment.
+// Must sum to 1.0
+export const MATCH_WEIGHTS_V2 = {
+  skill: 0.32,        // skill coverage × proficiency depth
+  competency: 0.22,   // avg of 5 consulting-behaviour scores
+  experience: 0.08,   // validated skill-level depth as experience proxy
+  availability: 0.18, // window-aware free capacity in the request window
+  billability: 0.10,  // low billability = high cost-recovery opportunity
+  evidence: 0.06,     // certs + project-doc overlaps + role history
+  coeAlignment: 0.04, // employee COE matches project skillset/solution domain
 } as const;
 
 export const ROLE_PERMISSIONS = {

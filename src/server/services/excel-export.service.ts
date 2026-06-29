@@ -1,7 +1,48 @@
+/**
+ * excel-export.service.ts  —  Resourcing CoLab export engine  (v2)
+ *
+ * Produces the "Pipeline Resource Plan" workbook:
+ *   Sheet 1: Pipeline Resource Plan  — source rows + 14 appended columns
+ *   Sheet 2: Alternates              — top-3 alternatives per request
+ *   Sheet 3: Summary                 — portfolio stats + full methodology notes
+ *
+ * ── Scoring dimensions (v2, 7 factors, sum = 1.0) ────────────────────────────
+ *   Skill Coverage + Depth   0.32  — required-skill coverage × proficiency level
+ *   Consulting Competency    0.22  — avg of 5 behaviour scores (1-5 scale)
+ *   Experience Depth         0.08  — skill-level depth proxy for years of experience
+ *   Availability Fit         0.18  — WINDOW-AWARE free capacity in request period;
+ *                                    rolling-off bonus +15 pts
+ *   Billability Fit          0.10  — low current billability = high cost-recovery opportunity
+ *   Evidence Strength        0.06  — certifications + project-doc tech overlap
+ *                                    + role-history match on prior allocations
+ *   COE Alignment            0.04  — employee COE matches skillset/solution domain
+ *
+ * ── Selection & conflict resolution ─────────────────────────────────────────
+ *   Processing order:  Priority (High/Critical) → SOW-Signed → likelyStart ASC
+ *   Within candidates: availability tier DESC (>50% > 20–50% > 0–20%) → matchScore DESC
+ *   Conflict tracking: WINDOW-AWARE (same employee may fill non-overlapping requests)
+ *   Pool exhaustion:   role pool → full active pool → shared resource (clearly flagged)
+ *   Leaver filter:     employees resigning ≤60 days are excluded from active pool
+ *
+ * ── Risk flags ───────────────────────────────────────────────────────────────
+ *   GHOST          — allocated but logging no timesheet hours (−25 pts availability)
+ *   SHADOW         — logging hours without formal allocation (team-health signal)
+ *   LEAVER         — resignation ≤60 days, excluded from pool, signal = HIRE
+ *   OVER_ALLOCATED — current utilisation > 100%
+ *   UNDER_LEVELLED — designation ≥2 grades below requested role (−15 pts skill)
+ *
+ * ── Output columns ───────────────────────────────────────────────────────────
+ *   Original cols 0–21 (pipeline xlsx) — fills cols 16, 17, 19 (Resource Recommended,
+ *     % Available, Skillset Match)
+ *   Appended cols 22–35 (14 new cols) — Employee ID, Match Score, Skill Score,
+ *     Competency Score, Experience Score, Availability Score, COE Alignment,
+ *     Signal, Risk Flags, Recommended Action, Unmet Skills, Plan, AI Rationale, Confidence
+ */
+
 import path from "path";
 import * as XLSX from "xlsx";
 import { db } from "@/lib/db";
-import { MATCH_WEIGHTS } from "@/lib/constants";
+import { MATCH_WEIGHTS_V2 } from "@/lib/constants";
 import { explainMatch } from "@/lib/ai/rationale";
 import { normalizeResourceRequest, employeeMatchesRole } from "@/lib/role-mapping";
 import type { ParsedRole } from "@/lib/role-mapping";
@@ -11,8 +52,10 @@ import type { MatchResult, MatchSignal, SkillBreakdown } from "@/server/services
 const SOURCE_REL = path.join("reference_files", "07. 260624_Pipeline_Details.xlsx");
 const SOURCE_SHEET = "Forecast";
 
-// ── Column indices ────────────────────────────────────────────────────────────
+// ── Column index map ──────────────────────────────────────────────────────────
+/** All column positions within the output workbook (0-indexed). */
 const C = {
+  // Original pipeline xlsx columns (22 cols — 0 through 21)
   CLUSTER: 0,
   REQUEST_RECEIVED: 1,
   ORIG_START: 2,
@@ -29,23 +72,27 @@ const C = {
   STATUS: 13,
   RESOURCES_REQUESTED: 14,
   PCT: 15,
-  RESOURCE_RECOMMENDED: 16, // FILL
-  PCT_AVAILABLE: 17,        // FILL
+  RESOURCE_RECOMMENDED: 16, // ← FILL
+  PCT_AVAILABLE: 17,        // ← FILL
   SKILLSET: 18,
-  SKILLSET_MATCH: 19,       // FILL
+  SKILLSET_MATCH: 19,       // ← FILL
   SOW_SIGNED: 20,
   COMMENTS: 21,
-  // Appended value-add columns
+  // Appended value-add columns (14 cols — 22 through 35)
   EMPLOYEE_ID: 22,
   MATCH_SCORE: 23,
   SKILL_SCORE: 24,
   COMPETENCY_SCORE: 25,
-  SIGNAL: 26,
-  ACTION: 27,
-  UNMET_SKILLS: 28,
-  PLAN: 29,
-  AI_RATIONALE: 30,
-  CONFIDENCE: 31,
+  EXPERIENCE_SCORE: 26,   // NEW — experience depth proxy
+  AVAILABILITY_SCORE: 27, // window-aware %
+  COE_ALIGNMENT: 28,      // NEW — COE match flag
+  SIGNAL: 29,
+  RISK_FLAGS: 30,          // NEW — GHOST / SHADOW / LEAVER / etc
+  ACTION: 31,
+  UNMET_SKILLS: 32,
+  PLAN: 33,
+  AI_RATIONALE: 34,
+  CONFIDENCE: 35,
 } as const;
 
 const APPENDED_HEADERS = [
@@ -53,17 +100,73 @@ const APPENDED_HEADERS = [
   "Match Score (0–100)",
   "Skill Score",
   "Competency Score",
+  "Experience Score",    // v2 new
+  "Availability Score",
+  "COE Alignment",       // v2 new
   "Signal",
+  "Risk Flags",          // v2 new
   "Recommended Action",
   "Unmet Skills",
   "Plan",
   "AI Rationale",
   "Confidence",
-];
+] as const;
 
-const TOTAL_COLS = 32;
+const TOTAL_COLS = 36;
 
-// ── Cell styles ────────────────────────────────────────────────────────────────
+// ── Configurable thresholds ───────────────────────────────────────────────────
+const LEAVER_HORIZON_DAYS = 60;      // employees resigning within this window are excluded
+const ROLLING_OFF_BONUS_PTS = 15;    // availability bonus for employees rolling off at window start
+const GHOST_AVAIL_PENALTY = 25;      // availability penalty for GHOST-flagged employees
+const UNDER_LEVEL_SKILL_PENALTY = 15;// skill score penalty when designation is ≥2 grades below request
+
+// ── Request priority sort order ───────────────────────────────────────────────
+const PRIORITY_ORDER: Record<string, number> = {
+  critical: 0,
+  high: 0,
+  medium: 1,
+  normal: 1,
+  low: 2,
+  tbd: 3,
+};
+
+// ── Role → seniority level (1-8) for designation gap calculation ──────────────
+const ROLE_SENIORITY: Record<string, number> = {
+  "analyst": 1,
+  "junior analyst": 1,
+  "associate": 1,
+  "business analyst": 2,
+  "consultant": 2,
+  "associate consultant": 2,
+  "software engineer": 2,
+  "data analyst": 2,
+  "solutions enabler": 2,
+  "senior business analyst": 3,
+  "senior software engineer": 3,
+  "data scientist": 3,
+  "solutions consultant": 3,
+  "senior consultant": 4,
+  "delivery manager": 4,
+  "senior data scientist": 4,
+  "senior solutions consultant": 4,
+  "solution architect": 5,
+  "principal": 5,
+  "senior solution architect": 6,
+  "associate partner": 6,
+  "partner": 7,
+  "senior partner": 8,
+};
+
+function roleToSeniority(role: string): number {
+  const lower = role.toLowerCase().trim();
+  if (ROLE_SENIORITY[lower] !== undefined) return ROLE_SENIORITY[lower]!;
+  for (const [key, val] of Object.entries(ROLE_SENIORITY)) {
+    if (lower.includes(key) || key.includes(lower)) return val;
+  }
+  return 3; // default: mid-level
+}
+
+// ── Cell styles ───────────────────────────────────────────────────────────────
 type CellStyle = Record<string, unknown>;
 
 const S = {
@@ -92,6 +195,14 @@ const S = {
     fill: { fgColor: { rgb: "FFFFC7CE" }, patternType: "solid" },
     font: { color: { rgb: "FF9C0006" } },
   } as CellStyle,
+  risk: {
+    fill: { fgColor: { rgb: "FFFFCCCC" }, patternType: "solid" },
+    font: { bold: true, color: { rgb: "FF990000" } },
+  } as CellStyle,
+  coeGood: {
+    fill: { fgColor: { rgb: "FFE2EFDA" }, patternType: "solid" },
+    font: { color: { rgb: "FF215732" } },
+  } as CellStyle,
 };
 
 function scoreStyle(v: number | null): CellStyle | null {
@@ -100,19 +211,45 @@ function scoreStyle(v: number | null): CellStyle | null {
   if (v >= 60) return S.warn;
   return S.bad;
 }
-
 function signalStyle(sig: string | null): CellStyle | null {
-  if (sig === "REDEPLOY") return S.good;
+  if (sig === "REDEPLOY")    return S.good;
   if (sig === "PARTIAL_HIRE") return S.warn;
-  if (sig === "HIRE") return S.bad;
+  if (sig === "HIRE")         return S.bad;
   return null;
 }
-
 function matchStyle(m: "Complete" | "Partial" | "No" | null): CellStyle | null {
   if (m === "Complete") return S.good;
-  if (m === "Partial") return S.warn;
-  if (m === "No") return S.bad;
+  if (m === "Partial")  return S.warn;
+  if (m === "No")       return S.bad;
   return null;
+}
+function applyStyle(ws: XLSX.WorkSheet, r: number, c: number, style: CellStyle) {
+  const addr = XLSX.utils.encode_cell({ r, c });
+  if (!ws[addr]) ws[addr] = { t: "z", v: null };
+  (ws[addr] as Record<string, unknown>)["s"] = style;
+}
+
+// ── Extended MatchResult ──────────────────────────────────────────────────────
+/** v2 match result — extends base MatchResult with all new scoring dimensions. */
+export interface MatchResultV2 extends MatchResult {
+  /** Experience depth score (0–100) — proxy for years-of-experience per required skill */
+  experienceScore: number;
+  /** COE alignment score (0 or 100) — employee COE appears in skillset/solution text */
+  coeAlignmentScore: number;
+  /** True if employee's COE name appears in the request skillset/solution */
+  coeAligned: boolean;
+  /** Employee's COE name (null if no COE assigned) */
+  empCoeName: string | null;
+  /** Active risk flags: GHOST, SHADOW, LEAVER, OVER_ALLOCATED, UNDER_LEVELLED */
+  riskFlags: string[];
+  /** Earliest date the employee's current allocation ends within the request window */
+  releasableFrom: Date | null;
+  /** True if allocation ends within the first 2 weeks of the request window */
+  isRollingOff: boolean;
+  /** Seniority gap vs requested role: +ve = over-levelled, −ve = under-levelled */
+  designationGap: number;
+  /** Raw free capacity (0–1) in the actual request window from allocation date overlaps */
+  windowFreeCapacity: number;
 }
 
 // ── Pre-fetched employee type ─────────────────────────────────────────────────
@@ -121,6 +258,12 @@ type EmployeeRow = Awaited<ReturnType<typeof fetchAllEmployees>>[number];
 async function fetchAllEmployees() {
   return db.employee.findMany({
     include: {
+      // NEW: designation level for seniority alignment
+      designation: { select: { name: true, level: true } },
+      // NEW: COE for alignment bonus
+      coe: { select: { name: true } },
+      // NEW: shadow flags for GHOST/SHADOW risk detection
+      shadowFlags: { select: { flagType: true } },
       employeeSkills: {
         where: { status: "APPROVED" },
         include: {
@@ -130,7 +273,11 @@ async function fetchAllEmployees() {
       },
       competencies: { select: { score: true } },
       allocations: {
+        // Include all non-completed allocations — needed for window-aware availability
+        where: { project: { status: { notIn: ["COMPLETED"] } } },
         include: { project: { select: { status: true, name: true } } },
+        // NOTE: allocation, startDate, endDate, role, resourcingStatus are all scalars
+        // and included automatically by Prisma's include
       },
       utilisationSnapshots: { orderBy: { weekStart: "desc" }, take: 4 },
       experienceDocs: {
@@ -141,16 +288,167 @@ async function fetchAllEmployees() {
   });
 }
 
-// ── In-memory scoring (mirrors computeMatchRanking but uses pre-fetched data) ─
+// ── Leaver detection ──────────────────────────────────────────────────────────
+function isLeavingSoon(emp: EmployeeRow): boolean {
+  if (!emp.dateOfResignation) return false;
+  const daysToLeave =
+    (emp.dateOfResignation.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+  return daysToLeave <= LEAVER_HORIZON_DAYS;
+}
+
+// ── Window-aware availability ─────────────────────────────────────────────────
+/**
+ * Calculate how much of this employee's capacity is FREE within the request window
+ * using allocation startDate/endDate overlap, rather than just last-4-week averages.
+ */
+function computeWindowAvailability(
+  emp: EmployeeRow,
+  windowStart: Date,
+  windowEnd: Date,
+): { freeCapacity: number; releasableFrom: Date | null; isRollingOff: boolean } {
+  let totalAllocatedPct = 0;
+  const endDatesInWindow: Date[] = [];
+
+  for (const alloc of emp.allocations) {
+    if (alloc.project.status === "COMPLETED") continue;
+
+    // Treat null dates as open-ended: no start = from epoch, no end = far future
+    const allocStart = alloc.startDate ?? new Date(0);
+    const allocEnd = alloc.endDate ?? new Date("2099-12-31");
+
+    const overlaps = allocStart <= windowEnd && allocEnd >= windowStart;
+    if (overlaps) {
+      totalAllocatedPct += alloc.allocation; // allocation is stored as 0-100
+      if (alloc.endDate) endDatesInWindow.push(alloc.endDate);
+    }
+  }
+
+  const freeCapacity = Math.max(0, Math.min(1, 1 - totalAllocatedPct / 100));
+
+  // Releasable-from: earliest allocation end date that falls within the window
+  const releasableFrom =
+    endDatesInWindow.length > 0
+      ? endDatesInWindow.sort((a, b) => a.getTime() - b.getTime())[0] ?? null
+      : null;
+
+  // Rolling-off: any allocation ends in the first 2 weeks of the window
+  const rollingOffCutoff = new Date(windowStart.getTime() + 14 * 24 * 60 * 60 * 1000);
+  const isRollingOff = endDatesInWindow.some(
+    (d) => d >= windowStart && d <= rollingOffCutoff,
+  );
+
+  return { freeCapacity, releasableFrom, isRollingOff };
+}
+
+// ── Experience depth score ─────────────────────────────────────────────────────
+/**
+ * Proxy for years-of-experience using validated skill levels.
+ * Since the raw "Experience" column from File 05 is not yet stored in the DB,
+ * we derive depth from: (validatedLevel / 5) and bonus points for exceeding required level.
+ */
+function computeExperienceScore(
+  emp: EmployeeRow,
+  requiredSkills: { skillId: string; requiredLevel: number }[],
+): number {
+  if (emp.employeeSkills.length === 0) return 0;
+
+  // No skill filter: use average validated level across all approved skills as breadth signal
+  if (requiredSkills.length === 0) {
+    const avgLevel =
+      emp.employeeSkills.reduce(
+        (sum, es) => sum + (es.validatedLevel ?? es.selfAssessedLevel),
+        0,
+      ) / emp.employeeSkills.length;
+    return Math.round((avgLevel / 5) * 100);
+  }
+
+  // Per required skill: depth ratio = validatedLevel / 5 (absolute depth)
+  // Bonus: +10 for each skill where validatedLevel > requiredLevel (exceeds requirement)
+  let depthSum = 0;
+  let bonusPts = 0;
+  let matchedCount = 0;
+
+  for (const req of requiredSkills) {
+    const empSkill = emp.employeeSkills.find((es) => es.skill.id === req.skillId);
+    if (!empSkill) continue;
+    const level = empSkill.validatedLevel ?? empSkill.selfAssessedLevel;
+    depthSum += level / 5;
+    if (level > req.requiredLevel) bonusPts += 10;
+    matchedCount++;
+  }
+
+  if (matchedCount === 0) return 0;
+  return Math.min(100, Math.round((depthSum / matchedCount) * 100) + bonusPts);
+}
+
+// ── COE alignment ─────────────────────────────────────────────────────────────
+/**
+ * Returns true if the employee's COE name appears in the pipeline request's
+ * skillset or solution text — indicating domain alignment.
+ */
+function computeCoeAlignment(
+  emp: EmployeeRow,
+  reqSkillset: string | null,
+  reqSolution: string | null,
+): { aligned: boolean; score: number } {
+  const coeName = emp.coe?.name?.toLowerCase().trim();
+  if (!coeName) return { aligned: false, score: 0 };
+
+  const searchText = `${reqSkillset ?? ""} ${reqSolution ?? ""}`.toLowerCase();
+  const aligned = searchText.includes(coeName);
+  return { aligned, score: aligned ? 100 : 0 };
+}
+
+// ── Designation seniority gap ─────────────────────────────────────────────────
+/**
+ * Positive = over-levelled (employee more senior than requested).
+ * Negative = under-levelled (employee more junior than requested).
+ */
+function computeDesignationGap(emp: EmployeeRow, canonicalRoles: string[]): number {
+  if (canonicalRoles.length === 0) return 0;
+  // Use Designation.level from DB if available; fall back to jobName → ROLE_SENIORITY map
+  const empLevel =
+    emp.designation?.level ?? roleToSeniority(emp.jobName ?? "");
+  const reqLevel = Math.round(
+    canonicalRoles.reduce((sum, r) => sum + roleToSeniority(r), 0) / canonicalRoles.length,
+  );
+  return empLevel - reqLevel;
+}
+
+// ── Risk flags ────────────────────────────────────────────────────────────────
+function computeRiskFlags(
+  emp: EmployeeRow,
+  designationGap: number,
+  avgUtil: number,
+): string[] {
+  const flags: string[] = [];
+  if (isLeavingSoon(emp)) flags.push("LEAVER");
+  if (emp.shadowFlags.some((f) => f.flagType === "GHOST"))   flags.push("GHOST");
+  if (emp.shadowFlags.some((f) => f.flagType === "SHADOW"))  flags.push("SHADOW");
+  if (avgUtil > 1.0)       flags.push("OVER_ALLOCATED");
+  if (designationGap <= -2) flags.push("UNDER_LEVELLED");
+  return flags;
+}
+
+// ── Core v2 scoring function ──────────────────────────────────────────────────
 function scoreEmployee(
   emp: EmployeeRow,
   requiredSkills: { skillId: string; skillName: string; requiredLevel: number }[],
-): MatchResult {
+  opts: {
+    windowStart: Date;
+    windowEnd: Date;
+    canonicalRoles: string[];
+    reqSkillset: string | null;
+    reqSolution: string | null;
+  },
+): MatchResultV2 {
+  const { windowStart, windowEnd, canonicalRoles, reqSkillset, reqSolution } = opts;
   const hasSkillFilter = requiredSkills.length > 0;
-  const skillIds = new Set(requiredSkills.map((s) => s.skillId));
+  const skillIdSet = new Set(requiredSkills.map((s) => s.skillId));
 
+  // ── Skill Score ────────────────────────────────────────────────────────────
   const relevantSkills = hasSkillFilter
-    ? emp.employeeSkills.filter((es) => skillIds.has(es.skill.id))
+    ? emp.employeeSkills.filter((es) => skillIdSet.has(es.skill.id))
     : emp.employeeSkills;
 
   let skillCoverage = 0;
@@ -165,65 +463,159 @@ function scoreEmployee(
       const met = current >= req.requiredLevel;
       if (met) skillCoverage++;
       else unmet.push(req.skillName);
-      skillDepth += Math.min(current / req.requiredLevel, 1);
+      skillDepth += Math.min(current / Math.max(req.requiredLevel, 1), 1);
       breakdown.push({ skillName: req.skillName, required: req.requiredLevel, current, met });
     }
   }
 
   const coveragePct = hasSkillFilter ? skillCoverage / requiredSkills.length : 1;
-  const depthPct = hasSkillFilter && requiredSkills.length > 0 ? skillDepth / requiredSkills.length : 1;
-  const skillScore = hasSkillFilter
+  const depthPct =
+    hasSkillFilter && requiredSkills.length > 0
+      ? skillDepth / requiredSkills.length
+      : 1;
+  let skillScore = hasSkillFilter
     ? Math.round((coveragePct * 0.6 + depthPct * 0.4) * 100)
-    : Math.round((emp.employeeSkills.length > 0 ? Math.min(emp.employeeSkills.length / 5, 1) : 0.3) * 100);
+    : Math.round(
+        (emp.employeeSkills.length > 0
+          ? Math.min(emp.employeeSkills.length / 5, 1)
+          : 0.3) * 100,
+      );
 
+  // ── Competency Score ───────────────────────────────────────────────────────
   const competencyScore =
     emp.competencies.length > 0
-      ? Math.round((emp.competencies.reduce((s, c) => s + c.score, 0) / emp.competencies.length / 5) * 100)
-      : 50;
+      ? Math.round(
+          (emp.competencies.reduce((s, c) => s + c.score, 0) /
+            emp.competencies.length /
+            5) *
+            100,
+        )
+      : 50; // default 50 when no competency data
 
+  // ── Experience Depth Score ─────────────────────────────────────────────────
+  const experienceScore = computeExperienceScore(emp, requiredSkills);
+
+  // ── Window-Aware Availability ──────────────────────────────────────────────
+  const {
+    freeCapacity: windowFreeCapacity,
+    releasableFrom,
+    isRollingOff,
+  } = computeWindowAvailability(emp, windowStart, windowEnd);
+
+  // Snapshot-based fallback: last 4 weeks of utilisation data
   const snapshots = emp.utilisationSnapshots;
   const avgUtil =
     snapshots.length > 0
       ? snapshots.reduce((s, sn) => s + sn.utilisation, 0) / snapshots.length
       : emp.allocations.length > 0
-      ? 1.0
-      : 0;
-  const availableFTE = Math.max(0, 1 - avgUtil);
-  const availabilityFit = Math.round(Math.min(availableFTE, 1) * 100);
+      ? 1.0 // active allocations but no snapshots = assume fully utilised
+      : 0;  // bench
 
+  // Prefer window-based availability when we have allocation date data;
+  // fall back to snapshot-derived utilisation otherwise
+  const hasWindowData = emp.allocations.some((a) => a.startDate || a.endDate);
+  const effectiveFreeCapacity = hasWindowData
+    ? windowFreeCapacity
+    : Math.max(0, 1 - avgUtil);
+
+  // Rolling-off bonus: employee's commitments end right at the start of the window
+  let availabilityFit = Math.round(Math.min(effectiveFreeCapacity, 1) * 100);
+  if (isRollingOff && availabilityFit < 100) {
+    availabilityFit = Math.min(100, availabilityFit + ROLLING_OFF_BONUS_PTS);
+  }
+
+  const availableFTE = effectiveFreeCapacity;
+
+  // ── Billability Fit ────────────────────────────────────────────────────────
   const avgBillable =
     snapshots.length > 0
       ? snapshots.reduce((s, sn) => s + sn.billableUtil, 0) / snapshots.length
-      : 1;
+      : 1; // no data = assume billable
   const billabilityFit = Math.round((1 - avgBillable) * 100);
 
-  const totalEvidence = emp.employeeSkills.reduce((s, es) => s + es.evidences.length, 0);
+  // ── Evidence Strength ──────────────────────────────────────────────────────
+  const totalEvidence = emp.employeeSkills.reduce(
+    (s, es) => s + es.evidences.length,
+    0,
+  );
+
+  // Boost for project experience docs whose tech/skills overlap required skills
   const reqNames = new Set(requiredSkills.map((r) => r.skillName.toLowerCase()));
   let expBoost = 0;
   for (const doc of emp.experienceDocs) {
-    const techTerms = (doc.techStack ?? "").split(/[,;]/).map((t) => t.trim().toLowerCase());
+    const techTerms = (doc.techStack ?? "")
+      .split(/[,;]/)
+      .map((t) => t.trim().toLowerCase());
     let docExtracted: { name: string }[] = [];
     try {
-      docExtracted = doc.extractedSkills ? (JSON.parse(doc.extractedSkills) as { name: string }[]) : [];
-    } catch { /* ignore */ }
-    const docSkillNames = [...techTerms, ...docExtracted.map((s) => s.name.toLowerCase())];
-    if (docSkillNames.some((n) => reqNames.has(n))) expBoost += 15;
+      docExtracted = doc.extractedSkills
+        ? (JSON.parse(doc.extractedSkills) as { name: string }[])
+        : [];
+    } catch { /* ignore malformed JSON */ }
+    const docNames = [...techTerms, ...docExtracted.map((s) => s.name.toLowerCase())];
+    if (docNames.some((n) => reqNames.has(n))) expBoost += 15;
   }
+
+  // Role-history boost: employee has done the requested role on a prior allocation
+  if (canonicalRoles.length > 0) {
+    const hasRoleHistory = emp.allocations.some((alloc) => {
+      if (!alloc.role) return false;
+      const allocRole = alloc.role.toLowerCase();
+      return canonicalRoles.some(
+        (cr) =>
+          allocRole.includes(cr.toLowerCase()) ||
+          cr.toLowerCase().includes(allocRole),
+      );
+    });
+    if (hasRoleHistory) expBoost += 10;
+  }
+
   const evidenceStrength = Math.min(totalEvidence * 10 + expBoost, 100);
 
-  const matchScore = Math.round(
-    skillScore * MATCH_WEIGHTS.skill +
-    competencyScore * MATCH_WEIGHTS.competency +
-    availabilityFit * MATCH_WEIGHTS.availability +
-    billabilityFit * MATCH_WEIGHTS.billability +
-    evidenceStrength * MATCH_WEIGHTS.evidence,
+  // ── COE Alignment ──────────────────────────────────────────────────────────
+  const { aligned: coeAligned, score: coeAlignmentScore } = computeCoeAlignment(
+    emp,
+    reqSkillset,
+    reqSolution,
   );
 
-  let signal: MatchSignal = "REDEPLOY";
-  if (!hasSkillFilter) {
+  // ── Designation gap & Risk Flags ───────────────────────────────────────────
+  const designationGap = computeDesignationGap(emp, canonicalRoles);
+  const riskFlags = computeRiskFlags(emp, designationGap, avgUtil);
+
+  // Apply penalties for identified risks
+  // Under-levelled by ≥2 grades: reduce skill score
+  if (designationGap <= -2) {
+    skillScore = Math.max(0, skillScore - UNDER_LEVEL_SKILL_PENALTY);
+  }
+  // GHOST penalty: unreliable availability
+  let effectiveAvailabilityFit = availabilityFit;
+  if (riskFlags.includes("GHOST")) {
+    effectiveAvailabilityFit = Math.max(0, availabilityFit - GHOST_AVAIL_PENALTY);
+  }
+
+  // ── Weighted Match Score (v2 — 7 dimensions) ───────────────────────────────
+  const matchScore = Math.round(
+    skillScore               * MATCH_WEIGHTS_V2.skill +
+    competencyScore          * MATCH_WEIGHTS_V2.competency +
+    experienceScore          * MATCH_WEIGHTS_V2.experience +
+    effectiveAvailabilityFit * MATCH_WEIGHTS_V2.availability +
+    billabilityFit           * MATCH_WEIGHTS_V2.billability +
+    evidenceStrength         * MATCH_WEIGHTS_V2.evidence +
+    coeAlignmentScore        * MATCH_WEIGHTS_V2.coeAlignment,
+  );
+
+  // ── Signal ─────────────────────────────────────────────────────────────────
+  let signal: MatchSignal;
+  if (riskFlags.includes("LEAVER")) {
+    // Leavers should never be deployed — force external hire signal
+    signal = "HIRE";
+  } else if (!hasSkillFilter) {
     signal = availableFTE > 0.5 ? "REDEPLOY" : availableFTE > 0.1 ? "PARTIAL_HIRE" : "HIRE";
   } else if (coveragePct < 0.7 || skillScore < 60 || availableFTE === 0) {
     signal = coveragePct < 0.4 ? "HIRE" : "PARTIAL_HIRE";
+  } else {
+    signal = "REDEPLOY";
   }
 
   return {
@@ -233,7 +625,7 @@ function scoreEmployee(
     jobName: emp.jobName,
     skillScore,
     competencyScore,
-    availabilityFit,
+    availabilityFit: effectiveAvailabilityFit,
     billabilityFit,
     evidenceStrength,
     matchScore,
@@ -241,6 +633,16 @@ function scoreEmployee(
     unmetSkills: unmet,
     availableFTE,
     signal,
+    // v2 extensions
+    experienceScore,
+    coeAlignmentScore,
+    coeAligned,
+    empCoeName: emp.coe?.name ?? null,
+    riskFlags,
+    releasableFrom,
+    isRollingOff,
+    designationGap,
+    windowFreeCapacity,
   };
 }
 
@@ -256,64 +658,125 @@ function textToRequiredSkills(
     .map((s) => ({ skillId: s.id, skillName: s.name, requiredLevel: 3 }));
 }
 
-// ── Availability tier (drives selection order, separate from displayed score) ─
-function availabilityTier(availableFTE: number): 0 | 1 | 2 | 3 {
-  if (availableFTE > 0.5) return 3;
-  if (availableFTE > 0.2) return 2;
-  if (availableFTE > 0)   return 1;
-  return 0;
+// ── Availability tier (pool selection hierarchy) ───────────────────────────────
+function availabilityTier(fteAvailable: number): 0 | 1 | 2 | 3 {
+  if (fteAvailable > 0.5) return 3;  // >50% free — first pick
+  if (fteAvailable > 0.2) return 2;  // 20–50% — partial, coordinate handoff
+  if (fteAvailable > 0)   return 1;  // <20%   — marginal, confirm commitment
+  return 0;                           // 0%     — fully allocated, release required
 }
 
-// ── Derived column values ─────────────────────────────────────────────────────
+// ── Derived column helpers ────────────────────────────────────────────────────
 function toSkillsetMatch(
   signal: MatchSignal,
   skillScore: number,
   availFTE: number,
 ): "Complete" | "Partial" | "No" {
-  if (signal === "HIRE" || availFTE === 0) return "No";
-  if (skillScore >= 70 && availFTE > 0.2) return "Complete";
+  if (signal === "HIRE" || availFTE === 0)    return "No";
+  if (skillScore >= 70 && availFTE > 0.2)     return "Complete";
   return "Partial";
 }
 
 function toAction(
-  match: MatchResult,
+  match: MatchResultV2,
   parsed: ParsedRole,
   roleFiltered: boolean,
   fallbackUsed: boolean,
+  poolExhausted: boolean,
 ): string {
-  const avail = Math.round(match.availableFTE * 100);
-  const tier = availabilityTier(match.availableFTE);
-  const roleLabel = roleFiltered
+  const availPct = Math.round(match.availableFTE * 100);
+  const tier     = availabilityTier(match.availableFTE);
+  const roleTag  = roleFiltered
     ? ` [${parsed.display}]`
     : fallbackUsed
     ? " [role unrecognised — any grade]"
     : "";
-  if (match.signal === "HIRE") return `Hire externally${roleLabel} — no available internal match`;
-  if (tier === 3) return `Redeploy ${match.name}${roleLabel} — ${avail}% free, available now`;
-  if (tier === 2) return `Redeploy ${match.name}${roleLabel} — ${avail}% free, coordinate handoff`;
-  if (tier === 1) return `Redeploy ${match.name}${roleLabel} — ${avail}% free, confirm commitment`;
-  return `${match.name}${roleLabel} — allocated (${avail}% free), release required`;
+  const riskNote     = match.riskFlags.length > 0 ? ` ⚠ ${match.riskFlags.join(", ")}` : "";
+  const sharedNote   = poolExhausted ? " (shared — pool exhausted)" : "";
+  const coeTag       = match.coeAligned ? ` ✓ COE:${match.empCoeName ?? ""}` : "";
+  const rollingTag   = match.isRollingOff ? " (rolling off — natural window)" : "";
+
+  if (match.signal === "HIRE") {
+    return `Hire externally${roleTag} — no suitable internal candidate${riskNote}`;
+  }
+  if (match.isRollingOff) {
+    return `Rolling off${roleTag} — ${match.name} naturally free at window start${coeTag}${riskNote}${sharedNote}`;
+  }
+  if (tier === 3) {
+    return `Redeploy ${match.name}${roleTag} — ${availPct}% free now${coeTag}${riskNote}${sharedNote}`;
+  }
+  if (tier === 2) {
+    return `Redeploy ${match.name}${roleTag} — ${availPct}% free, coordinate handoff${coeTag}${riskNote}${sharedNote}`;
+  }
+  if (tier === 1) {
+    return `Redeploy ${match.name}${roleTag} — ${availPct}% free, confirm commitment${coeTag}${rollingTag}${riskNote}${sharedNote}`;
+  }
+  return `${match.name}${roleTag} — currently allocated (${availPct}% free), release required${coeTag}${riskNote}${sharedNote}`;
 }
 
 function toPlan(
   signal: MatchSignal,
   sowSigned: boolean,
+  priorityLabel: string | null,
   tier: number,
   roleFiltered: boolean,
   fallbackUsed: boolean,
+  poolExhausted: boolean,
+  isRollingOff: boolean,
+  coeAligned: boolean,
 ): string {
   if (signal === "HIRE") return "External Hire Required";
-  const priority = sowSigned ? "SOW-Priority" : "Date-Priority";
-  const av = tier === 3 ? "Available" : tier === 2 ? "Partial" : tier === 1 ? "Marginal" : "Allocated";
-  const rf = roleFiltered ? "Role-Matched" : fallbackUsed ? "Grade-Fallback" : "No-Role-Filter";
-  return `${priority} · ${av} · ${rf}`;
+  const prioTag = priorityLabel
+    ? `Priority-${priorityLabel}`
+    : sowSigned
+    ? "SOW-Priority"
+    : "Date-Priority";
+  const availTag = isRollingOff
+    ? "RollingOff"
+    : tier === 3
+    ? "Available"
+    : tier === 2
+    ? "Partial"
+    : tier === 1
+    ? "Marginal"
+    : "Allocated";
+  const roleTag    = roleFiltered ? "Role-Matched" : fallbackUsed ? "Grade-Fallback" : "No-Role-Filter";
+  const coeTag     = coeAligned ? "COE-Aligned" : "";
+  const poolTag    = poolExhausted ? "Pool-Exhausted" : "";
+  return [prioTag, availTag, roleTag, coeTag, poolTag].filter(Boolean).join(" · ");
 }
 
-// ── Apply style to a cell ─────────────────────────────────────────────────────
-function applyStyle(ws: XLSX.WorkSheet, r: number, c: number, style: CellStyle) {
-  const addr = XLSX.utils.encode_cell({ r, c });
-  if (!ws[addr]) ws[addr] = { t: "z", v: null };
-  (ws[addr] as Record<string, unknown>)["s"] = style;
+// ── Window-aware conflict tracking ────────────────────────────────────────────
+/**
+ * Tracks which date intervals each employee is committed to.
+ * Unlike a simple Set<id>, this allows the same employee to be recommended
+ * for non-overlapping pipeline requests (e.g., project ending in Aug can take
+ * a September request).
+ */
+class ConflictTracker {
+  private readonly schedule = new Map<string, Array<{ start: Date; end: Date }>>();
+
+  hasConflict(employeeId: string, windowStart: Date, windowEnd: Date): boolean {
+    const intervals = this.schedule.get(employeeId) ?? [];
+    return intervals.some((iv) => iv.start <= windowEnd && iv.end >= windowStart);
+  }
+
+  claim(employeeId: string, windowStart: Date, windowEnd: Date): void {
+    const intervals = this.schedule.get(employeeId) ?? [];
+    intervals.push({ start: windowStart, end: windowEnd });
+    this.schedule.set(employeeId, intervals);
+  }
+}
+
+// ── Request window helpers ────────────────────────────────────────────────────
+function toWindow(
+  likelyStart: Date | null,
+  numberOfWeeks: number | null,
+): { windowStart: Date; windowEnd: Date } {
+  const windowStart = likelyStart ?? new Date();
+  const weeks = numberOfWeeks ?? 12;
+  const windowEnd = new Date(windowStart.getTime() + weeks * 7 * 24 * 60 * 60 * 1000);
+  return { windowStart, windowEnd };
 }
 
 // ── Main export function ──────────────────────────────────────────────────────
@@ -326,82 +789,129 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
   const sourcePath = opts.sourcePath ?? path.join(process.cwd(), SOURCE_REL);
   const maxAiCalls = opts.maxAiCalls ?? 15;
 
-  // 1. Read source xlsx
+  // ── Step 1: Read source pipeline xlsx ──────────────────────────────────────
   const sourceWb = XLSX.readFile(sourcePath, { cellStyles: true });
   const sourceWs = sourceWb.Sheets[SOURCE_SHEET];
   if (!sourceWs) throw new Error(`Sheet "${SOURCE_SHEET}" not found in ${sourcePath}`);
 
-  const sourceRows = XLSX.utils.sheet_to_json<unknown[]>(sourceWs, { header: 1, defval: null }) as unknown[][];
+  const sourceRows = XLSX.utils.sheet_to_json<unknown[]>(sourceWs, {
+    header: 1,
+    defval: null,
+  }) as unknown[][];
   const [originalHeaders, ...dataRows] = sourceRows;
-  if (!originalHeaders) throw new Error("Source file is empty");
+  if (!originalHeaders) throw new Error("Source pipeline file is empty");
 
-  // 2. Fetch DB data
+  // ── Step 2: Fetch all DB data in parallel ──────────────────────────────────
   const [dbRequests, allSkills, allEmployees] = await Promise.all([
     db.pipelineRequest.findMany({ orderBy: { createdAt: "asc" } }),
     db.skill.findMany({ select: { id: true, name: true } }),
     fetchAllEmployees(),
   ]);
 
-  // 3. Score and assign — availability-first, best-match-within-tier, pool-depletion
-  //
-  // Selection order per request:
-  //   Tier 3 (>50% free) → Tier 2 (20-50% free) → Tier 1 (<20% free) → Tier 0 (fully allocated)
-  //   Within each tier: highest matchScore wins
-  //
-  // SOW-signed requests are processed first to get first pick of the talent pool.
-  // Each employee is claimed at most once — this prevents any employee appearing
-  // on multiple rows as the primary recommendation.
-  //
-  // If the required count for a request > 1 (e.g. "2 SE"), this loop processes
-  // each slot as a separate row (xlsx already has one row per resource slot).
-  const claimedEmployeeIds = new Set<string>();
+  // Partition candidates: leavers are excluded from the active pool
+  const activeCandidates = allEmployees.filter((emp) => !isLeavingSoon(emp));
+  const leaverCount = allEmployees.length - activeCandidates.length;
 
-  // Sort requests: SOW-signed first, then by likelyStart ASC (earliest demand wins)
-  const sortedRequests = [...dbRequests].sort((a, b) => {
-    if (a.sowSigned !== b.sowSigned) return a.sowSigned ? -1 : 1;
-    const ad = a.likelyStart?.getTime() ?? Infinity;
-    const bd = b.likelyStart?.getTime() ?? Infinity;
+  // ── Step 3: Build requestsWithContext — join DB rows to xlsx rows ───────────
+  interface RequestContext {
+    req: (typeof dbRequests)[number];
+    srcRow: unknown[];       // original xlsx row (padded to 22 cols)
+    rowIndex: number;        // position in xlsx data rows (0-based)
+    priorityLabel: string | null;   // read from xlsx col 12 (Priority)
+    priorityOrder: number;   // 0 = highest
+    windowStart: Date;
+    windowEnd: Date;
+    reqSkillset: string | null;
+    reqSolution: string | null;
+  }
+
+  const requestsWithContext: RequestContext[] = [];
+  for (let i = 0; i < dataRows.length; i++) {
+    const req = dbRequests[i];
+    if (!req) continue;
+
+    const srcRow = [...(dataRows[i] as unknown[])];
+    while (srcRow.length < 22) srcRow.push(null);
+
+    // Priority is stored only in the source xlsx — DB PipelineRequest has no priority field
+    const priorityLabel = String(srcRow[C.PRIORITY] ?? "").trim() || null;
+    const priorityOrder = PRIORITY_ORDER[priorityLabel?.toLowerCase() ?? ""] ?? 2;
+
+    const { windowStart, windowEnd } = toWindow(req.likelyStart, req.numberOfWeeks);
+
+    requestsWithContext.push({
+      req,
+      srcRow,
+      rowIndex: i,
+      priorityLabel,
+      priorityOrder,
+      windowStart,
+      windowEnd,
+      reqSkillset: req.skillset,
+      reqSolution: req.solution,
+    });
+  }
+
+  // ── Step 4: Sort requests for processing ───────────────────────────────────
+  // Priority (High/Critical=0) → SOW-Signed → likelyStart ASC
+  // Earlier-processed requests get first pick of the talent pool.
+  const processOrder = [...requestsWithContext].sort((a, b) => {
+    if (a.priorityOrder !== b.priorityOrder) return a.priorityOrder - b.priorityOrder;
+    if (a.req.sowSigned !== b.req.sowSigned) return a.req.sowSigned ? -1 : 1;
+    const ad = a.req.likelyStart?.getTime() ?? Infinity;
+    const bd = b.req.likelyStart?.getTime() ?? Infinity;
     return ad - bd;
   });
 
+  // ── Step 5: Score and assign ───────────────────────────────────────────────
+  const tracker = new ConflictTracker();
+
   interface RowAssignment {
-    match: MatchResult;
-    topMatches: MatchResult[];   // top 3 within role pool — for Alternates sheet
+    match: MatchResultV2;
+    topMatches: MatchResultV2[];  // top-3 for Alternates sheet
     plan: string;
     rationale: string;
     confidence: string;
     parsed: ParsedRole;
-    roleFiltered: boolean;       // true = role pool was non-empty, match respects grade
-    fallbackUsed: boolean;       // true = role unrecognised, used full pool
+    roleFiltered: boolean;
+    fallbackUsed: boolean;
+    poolExhausted: boolean;
+    priorityLabel: string | null;
   }
   const assignments = new Map<string, RowAssignment>();
 
-  for (const req of sortedRequests) {
-    const reqSkills = textToRequiredSkills(req.skillset ?? "", allSkills);
-    const parsed = normalizeResourceRequest(req.resourcesRequested);
+  for (const ctx of processOrder) {
+    const { req, windowStart, windowEnd, reqSkillset, reqSolution } = ctx;
+    const reqSkills  = textToRequiredSkills(req.skillset ?? "", allSkills);
+    const parsed     = normalizeResourceRequest(req.resourcesRequested);
+    const scoreOpts  = { windowStart, windowEnd, canonicalRoles: parsed.canonicalRoles, reqSkillset, reqSolution };
 
-    // ── Build role-filtered candidate pool ──────────────────────────────────
-    // Primary pool: employees whose jobName matches the canonical role.
-    // Fallback pool: all employees when the role is unrecognised or no one matches.
-    const rolePool = parsed.canonicalRoles.length > 0
-      ? allEmployees.filter((emp) => employeeMatchesRole(emp.jobName, parsed.canonicalRoles))
-      : allEmployees;
+    // Role-filtered candidate pool (leavers already excluded from activeCandidates)
+    const rolePool =
+      parsed.canonicalRoles.length > 0
+        ? activeCandidates.filter((emp) =>
+            employeeMatchesRole(emp.jobName, parsed.canonicalRoles),
+          )
+        : activeCandidates;
 
     const roleFiltered = rolePool.length > 0 && parsed.canonicalRoles.length > 0;
     const fallbackUsed = parsed.canonicalRoles.length === 0;
 
-    // If the role is recognised but no employee holds that grade, widen to full pool
-    const candidatePool = rolePool.length > 0 ? rolePool : allEmployees;
+    // Widen to full pool when role is recognised but nobody holds that title
+    const candidatePool = rolePool.length > 0 ? rolePool : activeCandidates;
 
-    // ── Score candidates ─────────────────────────────────────────────────────
-    const allScored = candidatePool.map((emp) => scoreEmployee(emp, reqSkills));
+    // Score every candidate (in-memory — no extra DB calls)
+    const allScored: MatchResultV2[] = candidatePool.map((emp) =>
+      scoreEmployee(emp, reqSkills, scoreOpts),
+    );
 
-    // Alternates: top 3 within the role pool, ranked by pure matchScore
+    // Top-3 by pure match score for the Alternates sheet
     const topByScore = [...allScored]
       .sort((a, b) => b.matchScore - a.matchScore)
       .slice(0, 3);
 
     // Selection order: availability tier DESC → matchScore DESC within tier
+    // Any Tier-3 employee (>50% free) beats all lower-tier employees regardless of match score.
     const selectionOrder = [...allScored].sort((a, b) => {
       const ta = availabilityTier(a.availableFTE);
       const tb = availabilityTier(b.availableFTE);
@@ -409,339 +919,418 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
       return b.matchScore - a.matchScore;
     });
 
-    // ── Pick first unclaimed candidate ───────────────────────────────────────
-    let picked: MatchResult | null = null;
+    // Pick the first candidate with no window conflict
+    let picked: MatchResultV2 | null = null;
     let pickedTier = 0;
     let poolExhausted = false;
 
     for (const candidate of selectionOrder) {
-      if (!claimedEmployeeIds.has(candidate.employeeId)) {
-        picked = candidate;
+      if (!tracker.hasConflict(candidate.employeeId, windowStart, windowEnd)) {
+        picked     = candidate;
         pickedTier = availabilityTier(candidate.availableFTE);
-        claimedEmployeeIds.add(candidate.employeeId);
+        tracker.claim(candidate.employeeId, windowStart, windowEnd);
         break;
       }
     }
 
-    // If every candidate in the role pool is already claimed, expand to full pool once
+    // Role pool exhausted — expand to full active pool once
     if (!picked && roleFiltered) {
-      const fullOrder = allEmployees
-        .map((emp) => scoreEmployee(emp, reqSkills))
+      const fullScored = activeCandidates
+        .map((emp) => scoreEmployee(emp, reqSkills, scoreOpts))
         .sort((a, b) => {
           const ta = availabilityTier(a.availableFTE);
           const tb = availabilityTier(b.availableFTE);
           if (ta !== tb) return tb - ta;
           return b.matchScore - a.matchScore;
         });
-      for (const candidate of fullOrder) {
-        if (!claimedEmployeeIds.has(candidate.employeeId)) {
-          picked = candidate;
+      for (const candidate of fullScored) {
+        if (!tracker.hasConflict(candidate.employeeId, windowStart, windowEnd)) {
+          picked     = candidate;
           pickedTier = availabilityTier(candidate.availableFTE);
-          claimedEmployeeIds.add(candidate.employeeId);
+          tracker.claim(candidate.employeeId, windowStart, windowEnd);
           break;
         }
       }
     }
 
-    // True pool exhaustion — re-use best match (shared resource, clearly flagged)
+    // True pool exhaustion — recommend best regardless (shared resource, clearly flagged)
     if (!picked) {
       picked = selectionOrder[0] ?? null;
       poolExhausted = true;
+      if (picked) tracker.claim(picked.employeeId, windowStart, windowEnd);
     }
 
     if (picked) {
-      const poolSuffix = poolExhausted ? " — Pool Exhausted (Shared)" : "";
       assignments.set(req.id, {
         match: picked,
         topMatches: topByScore,
-        plan: toPlan(picked.signal, req.sowSigned, pickedTier, roleFiltered, fallbackUsed) + poolSuffix,
+        plan: toPlan(
+          picked.signal,
+          req.sowSigned,
+          ctx.priorityLabel,
+          pickedTier,
+          roleFiltered,
+          fallbackUsed,
+          poolExhausted,
+          picked.isRollingOff,
+          picked.coeAligned,
+        ),
         rationale: "",
         confidence: "—",
         parsed,
         roleFiltered,
         fallbackUsed,
+        poolExhausted,
+        priorityLabel: ctx.priorityLabel,
       });
     }
   }
 
-  // 4. AI rationale pass (max N REDEPLOY rows, batches of 3, 5s timeout per call)
-  const AI_TIMEOUT = 5000;
-  const redeployRows = sortedRequests
-    .filter((r) => assignments.get(r.id)?.match.signal === "REDEPLOY")
+  // ── Step 6: AI rationale pass ──────────────────────────────────────────────
+  // Apply Gemini rationale to up to maxAiCalls REDEPLOY rows (batches of 3, 5s timeout).
+  const AI_TIMEOUT = 5_000;
+
+  const redeployCtxs = processOrder
+    .filter((ctx) => assignments.get(ctx.req.id)?.match.signal === "REDEPLOY")
     .slice(0, maxAiCalls);
 
-  async function safeExplain(req: typeof redeployRows[0]): Promise<string> {
-    const asgn = assignments.get(req.id);
+  async function safeExplain(ctx: (typeof redeployCtxs)[number]): Promise<string> {
+    const asgn = assignments.get(ctx.req.id);
     if (!asgn) return "";
+    const m = asgn.match;
     try {
       return await Promise.race([
         explainMatch({
-          projectName: req.client ?? "Client Project",
-          projectCategory: req.solution ?? "General",
-          candidate: asgn.match,
+          projectName: ctx.req.client ?? "Client Project",
+          projectCategory: ctx.req.solution ?? "General",
+          candidate: m,
+          experienceScore: m.experienceScore,
+          coeAligned: m.coeAligned,
+          coeName: m.empCoeName,
+          designationGap: m.designationGap,
+          riskFlags: m.riskFlags,
         }),
         new Promise<string>((_, reject) =>
           setTimeout(() => reject(new Error("ai-timeout")), AI_TIMEOUT),
         ),
       ]);
     } catch {
-      const c = asgn.match;
-      const dim = c.skillScore >= c.competencyScore ? "technical skills" : "consulting competency";
-      const risk = c.unmetSkills.length > 0 ? `missing ${c.unmetSkills[0]}` : "availability constrained";
-      return `${c.name} leads on ${dim} (${c.matchScore}/100 overall). Primary risk: ${risk}. Signal: ${c.signal}.`;
+      // Deterministic fallback when AI times out or is unavailable
+      const dim  = m.skillScore >= m.competencyScore ? "technical skills" : "consulting competency";
+      const risk = m.unmetSkills.length > 0 ? `missing ${m.unmetSkills[0]}` : "availability constrained";
+      const coeNote  = m.coeAligned ? ` COE-aligned (${m.empCoeName}).` : "";
+      const riskNote = m.riskFlags.length > 0 ? ` Risk: ${m.riskFlags.join(", ")}.` : "";
+      return `${m.name} leads on ${dim} (${m.matchScore}/100).${coeNote} Primary concern: ${risk}. Signal: ${m.signal}.${riskNote}`;
     }
   }
 
-  // Process AI calls in batches of 3
-  for (let i = 0; i < redeployRows.length; i += 3) {
-    const batch = redeployRows.slice(i, i + 3);
-    const rationales = await Promise.all(batch.map((r) => safeExplain(r)));
-    batch.forEach((r, idx) => {
-      const asgn = assignments.get(r.id);
+  for (let i = 0; i < redeployCtxs.length; i += 3) {
+    const batch = redeployCtxs.slice(i, i + 3);
+    const rationales = await Promise.all(batch.map((ctx) => safeExplain(ctx)));
+    batch.forEach((ctx, idx) => {
+      const asgn = assignments.get(ctx.req.id);
       if (asgn) {
-        asgn.rationale = rationales[idx] ?? "";
+        asgn.rationale  = rationales[idx] ?? "";
         asgn.confidence = "HIGH (AI-verified)";
       }
     });
   }
 
-  // Fill confidence for non-AI rows
-  for (const [id, asgn] of assignments) {
+  // Fill deterministic rationale for non-AI rows
+  for (const [, asgn] of assignments) {
     if (!asgn.rationale) {
-      asgn.rationale = (() => {
-        const c = asgn.match;
-        const dim = c.skillScore >= c.competencyScore ? "technical skills" : "consulting competency";
-        const risk = c.unmetSkills.length > 0 ? `missing ${c.unmetSkills[0]}` : "availability limited";
-        return `${c.name} scores ${c.matchScore}/100. Strongest: ${dim}. Risk: ${risk}.`;
-      })();
-      asgn.confidence = asgn.match.signal === "HIRE" ? "N/A — Hire" : "MEDIUM (deterministic)";
+      const m    = asgn.match;
+      const dim  = m.skillScore >= m.competencyScore ? "technical skills" : "consulting competency";
+      const risk = m.unmetSkills.length > 0 ? `missing ${m.unmetSkills[0]}` : "availability limited";
+      const coeNote  = m.coeAligned ? ` COE-aligned (${m.empCoeName}).` : "";
+      const expNote  = m.experienceScore > 0 ? ` Experience depth: ${m.experienceScore}/100.` : "";
+      const riskNote = m.riskFlags.length > 0 ? ` Risk: ${m.riskFlags.join(", ")}.` : "";
+      asgn.rationale  = `${m.name} scores ${m.matchScore}/100. Strongest: ${dim}.${coeNote}${expNote} Risk: ${risk}.${riskNote}`;
+      asgn.confidence =
+        m.signal === "HIRE"
+          ? "N/A — External Hire"
+          : asgn.poolExhausted
+          ? "LOW (Pool Exhausted)"
+          : "MEDIUM (deterministic)";
     }
-    assignments.set(id, asgn);
   }
 
-  // 5. Build output rows
-  // Positional mapping: xlsx row i → dbRequests[i] (sorted by createdAt)
-  const outputAoa: unknown[][] = [[...originalHeaders as unknown[], ...APPENDED_HEADERS]];
+  // ── Step 7: Build output rows (original xlsx order preserved) ──────────────
+  const outputAoa: unknown[][] = [
+    [...(originalHeaders as unknown[]), ...APPENDED_HEADERS],
+  ];
 
   for (let i = 0; i < dataRows.length; i++) {
     const srcRow = [...(dataRows[i] as unknown[])];
-    // Pad to 22 columns
     while (srcRow.length < 22) srcRow.push(null);
 
-    const req = dbRequests[i];
+    const req  = dbRequests[i];
     const asgn = req ? assignments.get(req.id) : null;
 
-    // Fill existing columns
+    // Fill existing pipeline xlsx columns
     if (asgn) {
       const m = asgn.match;
-      // Resource Recommended: "Name (Job Title)"
-      srcRow[C.RESOURCE_RECOMMENDED] = m.jobName
-        ? `${m.name} (${m.jobName})`
-        : m.name;
-      srcRow[C.PCT_AVAILABLE] = `${Math.round(m.availableFTE * 100)}%`;
-      srcRow[C.SKILLSET_MATCH] = toSkillsetMatch(m.signal, m.skillScore, m.availableFTE);
+      srcRow[C.RESOURCE_RECOMMENDED] = m.jobName ? `${m.name} (${m.jobName})` : m.name;
+      srcRow[C.PCT_AVAILABLE]         = `${Math.round(m.availableFTE * 100)}%`;
+      srcRow[C.SKILLSET_MATCH]        = toSkillsetMatch(m.signal, m.skillScore, m.availableFTE);
     }
 
-    // Append value-add columns
-    const appended = asgn
+    // Append 14 value-add columns
+    const appended: unknown[] = asgn
       ? [
-          asgn.match.employeeCode,
-          asgn.match.matchScore,
-          asgn.match.skillScore,
-          asgn.match.competencyScore,
-          asgn.match.signal,
-          toAction(asgn.match, asgn.parsed, asgn.roleFiltered, asgn.fallbackUsed),
-          asgn.match.unmetSkills.join(", ") || "—",
-          asgn.plan,
-          asgn.rationale,
-          asgn.confidence,
+          asgn.match.employeeCode,                                           // 22 Employee ID
+          asgn.match.matchScore,                                             // 23 Match Score
+          asgn.match.skillScore,                                             // 24 Skill Score
+          asgn.match.competencyScore,                                        // 25 Competency Score
+          asgn.match.experienceScore,                                        // 26 Experience Score
+          Math.round(asgn.match.availableFTE * 100),                         // 27 Availability Score
+          asgn.match.coeAligned                                              // 28 COE Alignment
+            ? `✓ ${asgn.match.empCoeName ?? "COE"}`
+            : "✗ No match",
+          asgn.match.signal,                                                 // 29 Signal
+          asgn.match.riskFlags.length > 0                                    // 30 Risk Flags
+            ? asgn.match.riskFlags.join(", ")
+            : "—",
+          toAction(                                                           // 31 Recommended Action
+            asgn.match,
+            asgn.parsed,
+            asgn.roleFiltered,
+            asgn.fallbackUsed,
+            asgn.poolExhausted,
+          ),
+          asgn.match.unmetSkills.join(", ") || "—",                          // 32 Unmet Skills
+          asgn.plan,                                                         // 33 Plan
+          asgn.rationale,                                                    // 34 AI Rationale
+          asgn.confidence,                                                   // 35 Confidence
         ]
-      : Array(10).fill(null);
+      : Array<null>(14).fill(null);
 
     outputAoa.push([...srcRow, ...appended]);
   }
 
-  // 6. Build Main sheet
+  // ── Step 8: Build Main sheet with styles ───────────────────────────────────
   const ws = XLSX.utils.aoa_to_sheet(outputAoa);
 
-  // Apply header styles
+  // Header row styles
   for (let c = 0; c < TOTAL_COLS; c++) {
     applyStyle(ws, 0, c, c < 22 ? S.headerOrig : S.headerAppended);
   }
 
-  // Apply data row styles
+  // Data row conditional styles
   for (let r = 1; r < outputAoa.length; r++) {
-    const row = outputAoa[r] as unknown[];
-    const sowSigned = String(row[C.SOW_SIGNED] ?? "").toLowerCase() === "yes";
-    const matchScore = row[C.MATCH_SCORE] as number | null;
-    const signal = row[C.SIGNAL] as string | null;
-    const skillsetMatch = row[C.SKILLSET_MATCH] as "Complete" | "Partial" | "No" | null;
+    const row  = outputAoa[r] as unknown[];
+    const sowSigned    = String(row[C.SOW_SIGNED] ?? "").toLowerCase() === "yes";
+    const matchScore   = row[C.MATCH_SCORE]       as number | null;
+    const signal       = row[C.SIGNAL]            as string | null;
+    const skillMatch   = row[C.SKILLSET_MATCH]    as "Complete" | "Partial" | "No" | null;
+    const riskFlags    = row[C.RISK_FLAGS]         as string | null;
+    const coeAlignment = row[C.COE_ALIGNMENT]      as string | null;
 
-    // SOW row highlight on first column
     if (sowSigned) applyStyle(ws, r, C.SOW_SIGNED, S.sowRow);
 
-    // Match Score conditional color
-    const ms = scoreStyle(matchScore);
-    if (ms) applyStyle(ws, r, C.MATCH_SCORE, ms);
-    const ss = scoreStyle(row[C.SKILL_SCORE] as number | null);
-    if (ss) applyStyle(ws, r, C.SKILL_SCORE, ss);
-    const cs = scoreStyle(row[C.COMPETENCY_SCORE] as number | null);
-    if (cs) applyStyle(ws, r, C.COMPETENCY_SCORE, cs);
+    const scoreColMap: [number, number | null][] = [
+      [C.MATCH_SCORE,       matchScore],
+      [C.SKILL_SCORE,       row[C.SKILL_SCORE]       as number | null],
+      [C.COMPETENCY_SCORE,  row[C.COMPETENCY_SCORE]  as number | null],
+      [C.EXPERIENCE_SCORE,  row[C.EXPERIENCE_SCORE]  as number | null],
+      [C.AVAILABILITY_SCORE, row[C.AVAILABILITY_SCORE] as number | null],
+    ];
+    for (const [col, val] of scoreColMap) {
+      const st = scoreStyle(val);
+      if (st) applyStyle(ws, r, col, st);
+    }
 
-    // Signal color
-    const sigS = signalStyle(signal);
-    if (sigS) applyStyle(ws, r, C.SIGNAL, sigS);
+    const sigSt = signalStyle(signal);
+    if (sigSt) applyStyle(ws, r, C.SIGNAL, sigSt);
 
-    // Skillset Match color
-    const mS = matchStyle(skillsetMatch);
-    if (mS) applyStyle(ws, r, C.SKILLSET_MATCH, mS);
+    const matchSt = matchStyle(skillMatch);
+    if (matchSt) applyStyle(ws, r, C.SKILLSET_MATCH, matchSt);
+
+    if (coeAlignment?.startsWith("✓")) applyStyle(ws, r, C.COE_ALIGNMENT, S.coeGood);
+    if (riskFlags && riskFlags !== "—") applyStyle(ws, r, C.RISK_FLAGS, S.risk);
   }
 
-  // Column widths
+  // Column widths (36 columns)
   ws["!cols"] = [
-    { wch: 8 },  // Cluster
-    { wch: 12 }, // Request Received
-    { wch: 14 }, // Orig Start Date
-    { wch: 14 }, // Request Type
-    { wch: 10 }, // Client Priority
-    { wch: 18 }, // Client
-    { wch: 14 }, // EM
-    { wch: 14 }, // Likely Start
-    { wch: 12 }, // Start Confirmed
-    { wch: 10 }, // Num Weeks
-    { wch: 16 }, // Deal Stage
-    { wch: 14 }, // Solution
-    { wch: 10 }, // Priority
-    { wch: 14 }, // Status
-    { wch: 16 }, // Resources Requested
-    { wch: 8 },  // %
-    { wch: 22 }, // Resource Recommended ← FILL
-    { wch: 12 }, // % Available ← FILL
-    { wch: 40 }, // Skillset
-    { wch: 18 }, // Skillset Match ← FILL
-    { wch: 10 }, // SOW Signed
-    { wch: 30 }, // Comments
-    // Appended
-    { wch: 14 }, // Employee ID
-    { wch: 14 }, // Match Score
-    { wch: 12 }, // Skill Score
-    { wch: 16 }, // Competency Score
-    { wch: 16 }, // Signal
-    { wch: 48 }, // Recommended Action
-    { wch: 32 }, // Unmet Skills
-    { wch: 40 }, // Plan
-    { wch: 64 }, // AI Rationale
-    { wch: 24 }, // Confidence
+    // Original 22 columns
+    { wch: 8 },  { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 10 },
+    { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 10 },
+    { wch: 16 }, { wch: 14 }, { wch: 10 }, { wch: 14 }, { wch: 16 },
+    { wch: 8 },  { wch: 26 }, { wch: 12 }, { wch: 40 }, { wch: 18 },
+    { wch: 10 }, { wch: 30 },
+    // Appended 14 columns
+    { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 16 }, { wch: 14 },
+    { wch: 14 }, { wch: 20 }, { wch: 16 }, { wch: 30 }, { wch: 52 },
+    { wch: 32 }, { wch: 48 }, { wch: 72 }, { wch: 24 },
   ];
 
-  // Freeze row 1
   (ws as Record<string, unknown>)["!freeze"] = { xSplit: 0, ySplit: 1 };
+  const lastCol = XLSX.utils.encode_col(TOTAL_COLS - 1);
+  ws["!autofilter"] = { ref: `A1:${lastCol}1` };
 
-  // Autofilter on header row
-  const lastColLetter = XLSX.utils.encode_col(TOTAL_COLS - 1);
-  ws["!autofilter"] = { ref: `A1:${lastColLetter}1` };
-
-  // 7. Build Alternates sheet
+  // ── Step 9: Alternates sheet (enriched) ────────────────────────────────────
   const altHeaders = [
-    "Row #", "Client", "SOW Signed", "Skillset", "Rank",
-    "Employee ID", "Employee Name", "Role", "Match Score", "Skill Score",
-    "Competency Score", "Availability %", "Signal", "Unmet Skills",
-  ];
-  const altRows: unknown[][] = [altHeaders];
+    "Row #", "Client", "Priority", "SOW Signed", "Skillset", "Rank",
+    "Employee ID", "Employee Name", "Role", "Designation", "COE",
+    "Match Score", "Skill Score", "Competency Score", "Experience Score",
+    "Availability %", "COE Aligned", "Signal", "Risk Flags", "Unmet Skills",
+  ] as const;
 
+  const altRows: unknown[][] = [altHeaders];
   for (let i = 0; i < dataRows.length; i++) {
-    const req = dbRequests[i];
+    const req  = dbRequests[i];
     if (!req) continue;
     const asgn = assignments.get(req.id);
     if (!asgn) continue;
-    const row = dataRows[i] as unknown[];
+    const ctx  = requestsWithContext[i];
+    const row  = dataRows[i] as unknown[];
 
     asgn.topMatches.forEach((m, rank) => {
+      const emp = allEmployees.find((e) => e.id === m.employeeId);
       altRows.push([
         i + 1,
         row[C.CLIENT] ?? "—",
+        ctx?.priorityLabel ?? "—",
         row[C.SOW_SIGNED] ?? "No",
         row[C.SKILLSET] ?? "—",
         rank + 1,
         m.employeeCode,
         m.name,
         m.jobName ?? "—",
+        emp?.designation?.name ?? "—",
+        (m as MatchResultV2).empCoeName ?? "—",
         m.matchScore,
         m.skillScore,
         m.competencyScore,
+        (m as MatchResultV2).experienceScore,
         `${Math.round(m.availableFTE * 100)}%`,
+        (m as MatchResultV2).coeAligned ? "Yes" : "No",
         m.signal,
+        (m as MatchResultV2).riskFlags.join(", ") || "—",
         m.unmetSkills.join(", ") || "—",
       ]);
     });
   }
 
   const wsAlt = XLSX.utils.aoa_to_sheet(altRows);
-  // Header style on alternates
   for (let c = 0; c < altHeaders.length; c++) {
     applyStyle(wsAlt, 0, c, S.headerOrig);
   }
   (wsAlt as Record<string, unknown>)["!freeze"] = { xSplit: 0, ySplit: 1 };
+  wsAlt["!autofilter"] = { ref: `A1:${XLSX.utils.encode_col(altHeaders.length - 1)}1` };
 
-  // 8. Build Summary sheet
-  const confirmedCount = dbRequests.filter((r) => r.sowSigned).length;
-  const probableCount = dbRequests.filter((r) => !r.sowSigned).length;
+  // ── Step 10: Summary sheet ─────────────────────────────────────────────────
+  const confirmedCount  = dbRequests.filter((r) => r.sowSigned).length;
+  const probableCount   = dbRequests.filter((r) => !r.sowSigned).length;
+  const allAssign       = Array.from(assignments.values());
+  const redeployCount   = allAssign.filter((a) => a.match.signal === "REDEPLOY").length;
+  const partialCount    = allAssign.filter((a) => a.match.signal === "PARTIAL_HIRE").length;
+  const hireCount       = allAssign.filter((a) => a.match.signal === "HIRE").length;
+  const unmatched       = dbRequests.length - assignments.size;
+  const coeAlignedCount = allAssign.filter((a) => a.match.coeAligned).length;
+  const riskFlagCount   = allAssign.filter((a) => a.match.riskFlags.length > 0).length;
+  const poolExhCount    = allAssign.filter((a) => a.poolExhausted).length;
+  const rollingOffCount = allAssign.filter((a) => a.match.isRollingOff).length;
+  const coveredPct      = dbRequests.length > 0
+    ? Math.round(((redeployCount + partialCount) / dbRequests.length) * 100)
+    : 0;
 
-  const allAssignments = Array.from(assignments.values());
-  const redeployCount = allAssignments.filter((a) => a.match.signal === "REDEPLOY").length;
-  const partialCount = allAssignments.filter((a) => a.match.signal === "PARTIAL_HIRE").length;
-  const hireCount = allAssignments.filter((a) => a.match.signal === "HIRE").length;
-  const unmatched = dbRequests.length - assignments.size;
+  // Priority breakdown from xlsx
+  const prioCounts = new Map<string, number>();
+  for (const ctx of requestsWithContext) {
+    const p = ctx.priorityLabel ?? "Unspecified";
+    prioCounts.set(p, (prioCounts.get(p) ?? 0) + 1);
+  }
 
-  const coveredPct =
-    dbRequests.length > 0
-      ? Math.round(((redeployCount + partialCount) / dbRequests.length) * 100)
-      : 0;
-
-  // Roles in demand
+  // Top 5 roles in demand
   const roleCounts = new Map<string, number>();
   for (const req of dbRequests) {
     const r = req.resourcesRequested ?? "Unknown";
     roleCounts.set(r, (roleCounts.get(r) ?? 0) + 1);
   }
-  const topRoles = [...roleCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const topRoles = [...roleCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
 
   const now = new Date();
   const summaryRows: unknown[][] = [
-    ["RESOURCING EXPORT SUMMARY", null],
+    ["RESOURCING EXPORT SUMMARY — v2 Enhanced Matching (7-Dimension Score)", null],
     [`Generated: ${now.toLocaleString("en-GB")}`, null],
     [],
     ["PORTFOLIO OVERVIEW", null],
-    ["Total Pipeline Requests", dbRequests.length],
-    ["SOW-Signed (Confirmed)", confirmedCount],
-    ["Probable (Unsigned)", probableCount],
+    ["Total Pipeline Requests",           dbRequests.length],
+    ["SOW-Signed (Confirmed)",            confirmedCount],
+    ["Probable (Unsigned)",               probableCount],
+    [],
+    ["PRIORITY BREAKDOWN", null],
+    ...[...prioCounts.entries()].map(([p, n]) => [p, n]),
     [],
     ["MATCHING RESULTS", null],
-    ["Covered Internally (Redeploy)", redeployCount],
-    ["Covered Partially (Redeploy + Hire)", partialCount],
-    ["External Hire Required", hireCount],
-    ["No Match Found", unmatched],
-    ["Internal Coverage %", `${coveredPct}%`],
+    ["Covered Internally — Redeploy",     redeployCount],
+    ["Covered Partially — Partial Hire",  partialCount],
+    ["External Hire Required",            hireCount],
+    ["No Match Found",                    unmatched],
+    ["Internal Coverage %",              `${coveredPct}%`],
+    ["COE-Aligned Assignments",           coeAlignedCount],
+    ["Rolling-Off Opportunities Used",    rollingOffCount],
+    ["Assignments with Risk Flags",       riskFlagCount],
+    ["Pool-Exhausted (Shared Resource)",  poolExhCount],
+    [],
+    ["CANDIDATE POOL HEALTH", null],
+    ["Total Employees",                   allEmployees.length],
+    [`Excluded — Leavers (≤${LEAVER_HORIZON_DAYS} days)`, leaverCount],
+    ["Active Candidates",                 activeCandidates.length],
     [],
     ["TOP ROLES IN DEMAND", null],
     ...topRoles.map(([role, count]) => [role, count]),
     [],
-    ["METHODOLOGY", null],
-    ["Scoring weights", "Skill 35% · Competency 25% · Availability 20% · Billability 12% · Evidence 8%"],
-    ["Conflict resolution", "Greedy algorithm: SOW-signed requests prioritised, conflict windows tracked per employee"],
-    ["AI rationale", `Applied to top ${Math.min(maxAiCalls, redeployCount)} REDEPLOY matches (5s timeout per call)`],
-    ["Skillset match", "Complete = REDEPLOY + skill≥70 | Partial = PARTIAL_HIRE | No = HIRE or no match"],
+    ["SCORING METHODOLOGY — v2 (7 Dimensions, sum = 100%)", null],
+    ["Skill Coverage + Depth",   "32% — required-skill coverage × proficiency level (validatedLevel / requiredLevel)"],
+    ["Consulting Competency",    "22% — average of 5 behaviour scores: Stakeholder Mgmt, Advisory, Techno-Functional, Communication, Ambiguity Navigation"],
+    ["Experience Depth",         "8%  — proxy for years-of-experience via (validatedLevel / 5); +10 pts per skill where level exceeds requirement"],
+    ["Availability Fit",         `18% — window-aware free capacity within likelyStart→end window; rolling-off bonus +${ROLLING_OFF_BONUS_PTS} pts`],
+    ["Billability Fit",          "10% — low current billability = high cost-recovery opportunity"],
+    ["Evidence Strength",        "6%  — certifications count × 10 pts + project-doc tech overlap + prior role-history match on allocations"],
+    ["COE Alignment",            "4%  — employee COE name appears in request skillset/solution text"],
+    [],
+    ["CONFLICT RESOLUTION", null],
+    ["Request processing order", "Priority (High/Critical) → SOW-Signed → Likely Start ASC"],
+    ["Conflict tracking",        "Window-aware: same employee may be recommended for non-overlapping requests"],
+    ["Role pool exhaustion",     "Role-matched pool → full active pool → shared resource (clearly flagged in Risk Flags)"],
+    ["Leaver exclusion",         `Employees with resignation date ≤${LEAVER_HORIZON_DAYS} days from today excluded from active pool`],
+    [],
+    ["RISK FLAG LEGEND", null],
+    ["GHOST",          `Allocated to project but logging zero timesheet hours — unreliable capacity; −${GHOST_AVAIL_PENALTY} pts availability`],
+    ["SHADOW",         "Logging hours without a formal allocation — team health signal, review resourcing records"],
+    ["LEAVER",         `Resignation ≤${LEAVER_HORIZON_DAYS} days — excluded from active pool; signal forced to HIRE`],
+    ["OVER_ALLOCATED", "Current utilisation > 100% (working beyond capacity)"],
+    ["UNDER_LEVELLED", `Designation ≥2 grades below requested role — −${UNDER_LEVEL_SKILL_PENALTY} pts skill score`],
+    [],
+    ["AI RATIONALE", null],
+    ["Applied to",   `Top ${Math.min(maxAiCalls, redeployCount)} REDEPLOY matches (5 s timeout, batches of 3)`],
+    ["Context passed", "Skill, Competency, Experience, Availability, COE Alignment, Designation Gap, Risk Flags"],
+    ["Fallback",     "Deterministic rationale using dimension scores when AI is unavailable or times out"],
+    [],
+    ["DATA SOURCES", null],
+    ["File 01", "employee_details.csv — employee identity, job, location, resignation dates"],
+    ["File 02", "project_details.csv — project type, status, tech/proposition COE"],
+    ["File 03", "Project_Allocation_Details.csv — allocation %, dates, role, resourcing status"],
+    ["File 04", "timesheet_details_2026.csv — hours, billability (→ UtilisationSnapshot)"],
+    ["File 05", "Skill_Data.xlsx — employee skills, validated scores"],
+    ["File 06", "Competency_Details.xlsx — 5 consulting-behaviour scores per employee"],
+    ["File 07", "Pipeline_Details.xlsx — pipeline demand: skillset, role, priority, SOW"],
+    ["File 09", "Project_Weekly_Status_Details.csv — scope/schedule/quality/csat/team RAG"],
+    ["Derived", "ShadowFlag (GHOST/SHADOW from allocation vs timesheet join), UtilisationSnapshot, RoleMixTemplate"],
   ];
 
   const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
-  wsSummary["!cols"] = [{ wch: 40 }, { wch: 30 }];
-  // Title cell style
+  wsSummary["!cols"] = [{ wch: 55 }, { wch: 90 }];
   applyStyle(wsSummary, 0, 0, S.headerOrig);
 
-  // 9. Assemble workbook
+  // ── Step 11: Assemble and return workbook ──────────────────────────────────
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Pipeline Resource Plan");
-  XLSX.utils.book_append_sheet(wb, wsAlt, "Alternates");
+  XLSX.utils.book_append_sheet(wb, ws,        "Pipeline Resource Plan");
+  XLSX.utils.book_append_sheet(wb, wsAlt,     "Alternates");
   XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
 
   const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx", cellStyles: true });
