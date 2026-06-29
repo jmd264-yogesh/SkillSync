@@ -365,6 +365,21 @@ function ResourceModeToggle({
   );
 }
 
+const SAMPLE_PRODUCTS = [
+  { id: "1",  name: "DataBridge Connector Framework" },
+  { id: "2",  name: "Analytics Accelerator Suite" },
+  { id: "3",  name: "Cloud Data Warehouse Starter Kit" },
+  { id: "4",  name: "ETL Pipeline Template Library" },
+  { id: "5",  name: "Insight Reporting Platform" },
+  { id: "6",  name: "Master Data Hub" },
+  { id: "7",  name: "ML Pipeline Starter Pack" },
+  { id: "8",  name: "Real-Time Streaming Accelerator" },
+  { id: "9",  name: "Data Governance Toolkit" },
+  { id: "10", name: "Self-Service BI Framework" },
+  { id: "11", name: "Data Quality Monitor" },
+  { id: "12", name: "Unified Customer Data Platform" },
+];
+
 interface SimulatorClientProps {
   skills: { id: string; name: string; category: string }[];
 }
@@ -383,6 +398,8 @@ export function SimulatorClient({ skills }: SimulatorClientProps) {
   const [showTechStack, setShowTechStack] = useState(false);
   const [description, setDescription] = useState("");
   const [showDescription, setShowDescription] = useState(false);
+  const [useExistingProduct, setUseExistingProduct] = useState(false);
+  const [existingProduct, setExistingProduct] = useState<{ id: string; name: string } | null>(null);
 
   const [allocations, setAllocations] = useState<RoleAllocation[]>([]);
   const [narrative, setNarrative] = useState<string | null>(null);
@@ -449,6 +466,7 @@ export function SimulatorClient({ skills }: SimulatorClientProps) {
         sourceSystems: sourceSystems.length > 0 ? sourceSystems : undefined,
         techStack: techStack.length > 0 ? techStack.map((t) => t.skillName) : undefined,
         description: description.trim() || undefined,
+        existingProduct: useExistingProduct && existingProduct ? existingProduct : undefined,
       });
       setAllocations(data.allocations);
       setNarrative(data.narrative);
@@ -708,6 +726,65 @@ export function SimulatorClient({ skills }: SimulatorClientProps) {
                 <p className="mt-1 text-[11px] text-muted-foreground">
                   This context is sent to AI. Mention source system counts here to scale Chennai engineering roles accordingly.
                 </p>
+              </div>
+            )}
+          </div>
+
+          {/* Existing Product */}
+          <div className="mt-3 border-t pt-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-slate-700">Use Existing Product</span>
+                <span className="text-xs text-slate-400">(optional — reduces engineer effort by 50%)</span>
+                {useExistingProduct && existingProduct && (
+                  <span className="ml-1 bg-emerald-100 text-emerald-700 text-[10px] font-semibold px-1.5 py-0.5 rounded-full">
+                    {existingProduct.name}
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={useExistingProduct}
+                onClick={() => {
+                  setUseExistingProduct((v) => !v);
+                  if (useExistingProduct) setExistingProduct(null);
+                }}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
+                  useExistingProduct ? "bg-emerald-500" : "bg-slate-200"
+                }`}
+              >
+                <span
+                  className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
+                    useExistingProduct ? "translate-x-4" : "translate-x-0.5"
+                  }`}
+                />
+              </button>
+            </div>
+
+            {useExistingProduct && (
+              <div className="mt-2.5">
+                  <Select
+                    value={existingProduct?.id ?? ""}
+                    onValueChange={(id) => {
+                      const p = SAMPLE_PRODUCTS.find((x) => x.id === id);
+                      setExistingProduct(p ? { id: p.id, name: p.name } : null);
+                    }}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Select an existing product…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SAMPLE_PRODUCTS.map((p) => (
+                        <SelectItem key={p.id} value={p.id} className="text-xs">
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Reusing this product reduces Chennai engineering roles (SW, SSE, TA, SE) by 50%. UK consulting roles are unchanged.
+                  </p>
               </div>
             )}
           </div>

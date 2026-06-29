@@ -182,6 +182,7 @@ export async function simulateProposition(input: {
   sourceSystems?: string[];
   techStack?: string[];
   description?: string;
+  existingProduct?: { id: string; name: string };
 }): Promise<PropositionSimulatorResult> {
   const session = await auth();
   if (!session) throw new UnauthorizedError();
@@ -239,6 +240,16 @@ UK consulting roles use business-facing tools; they do not change headcount base
       ? `\nAdditional project context:\n<context>\n${input.description.trim()}\n</context>\nUse this context to refine the allocation. Reflect any adjustments in the narrative.`
       : "";
 
+  const existingProductNote = input.existingProduct
+    ? `\nEXISTING PRODUCT ACCELERATOR: This project will reuse the existing product "${input.existingProduct.name}".
+Because the core platform/accelerator already exists, engineer build effort is REDUCED BY 50%.
+Apply a 50% reduction to all Chennai technical delivery roles compared to the baseline:
+  Software Engineer, Senior Software Engineer, Technical Solutions Architect, Solutions Enabler.
+Do NOT reduce UK consulting roles (Partner, Associate Partner, Principal, Manager, Senior Consultant, Consultant) —
+client relationship and governance effort is unchanged.
+State the 50% engineering reduction clearly in the narrative.`
+    : "";
+
   const prompt = `Recommend headcount allocations for:
 
 Proposition: ${input.proposition}
@@ -250,7 +261,7 @@ Duration: ${input.weeks} weeks
 
 ${baselineNote}
 ${sourceNote}
-${techStackNote}${descriptionNote}
+${techStackNote}${descriptionNote}${existingProductNote}
 
 Return headcount values per role (1.0 = one person full-time, 0.5 = half-time, etc.)
 matching the historical reference table as closely as possible.
