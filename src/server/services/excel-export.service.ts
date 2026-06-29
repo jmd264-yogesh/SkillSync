@@ -556,11 +556,13 @@ function deriveRequestCoeDomain(skillset: string | null, solution: string | null
 }
 
 // ── Role adjacency for cross-role cascade ─────────────────────────────────────
-// Tech executor family (SE / SSE / Enabler) can act in adjacent roles when the
-// exact-role pool is exhausted — internal redeployment always beats external hire.
+// Adjacency is intentionally asymmetric:
+//   SE requesting → only Solutions Enabler as fallback (SSE must NOT fill SE slots — over-graded)
+//   SSE requesting → SE can act up (experienced SE flagged as "acting as SSE")
+//   Enabler requesting → SE or SSE as fallback
 const ROLE_ADJACENCY: Record<string, string[]> = {
   "senior software engineer": ["software engineer", "solutions enabler"],
-  "software engineer":        ["senior software engineer", "solutions enabler"],
+  "software engineer":        ["solutions enabler"],
   "solutions enabler":        ["senior software engineer", "software engineer"],
 };
 
