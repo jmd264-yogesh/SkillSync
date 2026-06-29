@@ -110,13 +110,30 @@ export function normalizeResourceRequest(raw: string | null): ParsedRole {
   return { canonicalRoles: [], count, isEM, display: cleaned || "Unknown" };
 }
 
-/** Returns true if an employee's jobName matches any canonical role in the list. */
+/** Returns true if an employee's jobName matches any canonical role in the list.
+ *
+ * Matching is grade-exact: "software engineer" must NOT match "senior software engineer"
+ * and "principal" must NOT match "principal architect". The canonical role must appear
+ * with no grade-word prefix and no extending word suffix that would make it a different title.
+ */
 export function employeeMatchesRole(
   jobName: string | null,
   canonicalRoles: string[],
 ): boolean {
   if (canonicalRoles.length === 0) return true;
   if (!jobName) return false;
-  const jn = jobName.toLowerCase();
-  return canonicalRoles.some((r) => jn.includes(r.toLowerCase()));
+  const jn = jobName.toLowerCase().trim();
+  return canonicalRoles.some((r) => {
+    const role = r.toLowerCase();
+    if (jn === role) return true;
+    const idx = jn.indexOf(role);
+    if (idx === -1) return false;
+    // Reject if a grade word precedes the role (e.g. "senior" before "software engineer")
+    const prefix = jn.substring(0, idx).trim();
+    if (prefix.length > 0) return false;
+    // Reject if an extending word follows the role (e.g. "architect" after "principal")
+    const suffix = jn.substring(idx + role.length).trimStart();
+    if (suffix.length > 0 && /^[a-z]/i.test(suffix)) return false;
+    return true;
+  });
 }
