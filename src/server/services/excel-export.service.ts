@@ -130,6 +130,32 @@ const PRIORITY_ORDER: Record<string, number> = {
   tbd: 3,
 };
 
+// ── HubSpot deal stage → conversion probability ───────────────────────────────
+// Source: pipeline stage framework — conversion % = resource confirmability %.
+// Stages < 60%: resource is pre-identified but NOT claimed in the ConflictTracker.
+// Stages ≥ 60%: resource is hard-reserved (claimed for the window).
+// Stages = 0%:  row is skipped (deal lost, release any held resources).
+const DEAL_STAGE_CONVERSION: Record<string, number> = {
+  "opportunity inception":    0.20,
+  "make it real":             0.40,
+  "build the proposition":    0.50,
+  "scoping approval":         0.60,
+  "propose & negotiate":      0.80,
+  "propose and negotiate":    0.80,
+  "sow pending signature":    0.90,
+  "sow with customer":        0.90,
+  "deal won":                 1.00,
+  "signed":                   1.00,
+  "replacement":              0.80,  // committed replacement work
+  "deal lost":                0.00,
+};
+
+function parseDealStageConversion(raw: unknown): { pct: number; label: string } {
+  const label = String(raw ?? "").trim();
+  const pct = DEAL_STAGE_CONVERSION[label.toLowerCase()] ?? 0.60; // unknown → Scoping default
+  return { pct, label };
+}
+
 // ── Role → seniority level (1-8) for designation gap calculation ──────────────
 const ROLE_SENIORITY: Record<string, number> = {
   "analyst": 1,
@@ -907,6 +933,7 @@ function toAction(
   roleFiltered: boolean,
   fallbackUsed: boolean,
   poolExhausted: boolean,
+  conversionPct: number,
 ): string {
   const availPct = Math.round(match.availableFTE * 100);
   const tier     = availabilityTier(match.availableFTE);
@@ -915,10 +942,18 @@ function toAction(
     : fallbackUsed
     ? " [role unrecognised - any grade]"
     : "";
-  const riskNote     = match.riskFlags.length > 0 ? ` ⚠ ${match.riskFlags.join(", ")}` : "";
-  const sharedNote   = poolExhausted ? " (shared - pool exhausted)" : "";
-  const coeTag       = match.coeAligned ? ` ✓ COE:${match.requestedDomain ?? match.empCoeName ?? ""}` : "";
-  const rollingTag   = match.isRollingOff ? " (rolling off - natural window)" : "";
+  const riskNote   = match.riskFlags.length > 0 ? ` ⚠ ${match.riskFlags.join(", ")}` : "";
+  const sharedNote = poolExhausted ? " (shared - pool exhausted)" : "";
+  const coeTag     = match.coeAligned ? ` ✓ COE:${match.requestedDomain ?? match.empCoeName ?? ""}` : "";
+  const rollingTag = match.isRollingOff ? " (rolling off - natural window)" : "";
+
+  // Early-stage deals (< 60%): resource is pre-identified but NOT committed.
+  // Reservation happens only at Scoping Approval (60%) and above.
+  if (conversionPct < 0.60) {
+    const stagePct  = Math.round(conversionPct * 100);
+    const stageVerb = conversionPct <= 0.40 ? "Pre-identified" : "Soft-reserved";
+    return `${stageVerb} (${stagePct}% deal confidence)${roleTag} — ${match.name}, not yet committed${riskNote}`;
+  }
 
   if (match.signal === "HIRE") {
     return `Hire externally${roleTag} - no suitable internal candidate${riskNote}`;
@@ -948,8 +983,16 @@ function toPlan(
   poolExhausted: boolean,
   isRollingOff: boolean,
   coeAligned: boolean,
+  conversionPct: number,
 ): string {
-  if (signal === "HIRE") return "External Hire Required";
+  const stagePct = Math.round(conversionPct * 100);
+  const stageTag = `Stage-${stagePct}%`;
+  if (signal === "HIRE" && conversionPct >= 0.60) return `${stageTag} · External Hire Required`;
+  if (conversionPct < 0.60) {
+    const commitment = conversionPct <= 0.40 ? "Pre-Pipeline" : "Soft-Reserved";
+    const roleTag = roleFiltered ? "Role-Matched" : fallbackUsed ? "Grade-Fallback" : "No-Role-Filter";
+    return [stageTag, commitment, roleTag].filter(Boolean).join(" · ");
+  }
   const prioTag = priorityLabel
     ? `Priority-${priorityLabel}`
     : sowSigned
@@ -964,10 +1007,10 @@ function toPlan(
     : tier === 1
     ? "Marginal"
     : "Allocated";
-  const roleTag    = roleFiltered ? "Role-Matched" : fallbackUsed ? "Grade-Fallback" : "No-Role-Filter";
-  const coeTag     = coeAligned ? "COE-Aligned" : "";
-  const poolTag    = poolExhausted ? "Pool-Exhausted" : "";
-  return [prioTag, availTag, roleTag, coeTag, poolTag].filter(Boolean).join(" · ");
+  const roleTag  = roleFiltered ? "Role-Matched" : fallbackUsed ? "Grade-Fallback" : "No-Role-Filter";
+  const coeTag   = coeAligned ? "COE-Aligned" : "";
+  const poolTag  = poolExhausted ? "Pool-Exhausted" : "";
+  return [stageTag, prioTag, availTag, roleTag, coeTag, poolTag].filter(Boolean).join(" · ");
 }
 
 // ── Window-aware conflict tracking ────────────────────────────────────────────
@@ -1047,6 +1090,8 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
     windowEnd: Date;
     reqSkillset: string | null;
     reqSolution: string | null;
+    conversionPct: number;   // HubSpot deal stage → 0.20…1.00 (resource confirmability)
+    dealStageLabel: string;  // raw stage string for display
   }
 
   const requestsWithContext: RequestContext[] = [];
@@ -1063,6 +1108,8 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
 
     const { windowStart, windowEnd } = toWindow(req.likelyStart, req.numberOfWeeks);
 
+    const { pct: conversionPct, label: dealStageLabel } = parseDealStageConversion(srcRow[C.DEAL_STAGE]);
+
     requestsWithContext.push({
       req,
       srcRow,
@@ -1073,13 +1120,17 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
       windowEnd,
       reqSkillset: req.skillset,
       reqSolution: req.solution,
+      conversionPct,
+      dealStageLabel,
     });
   }
 
   // ── Step 4: Sort requests for processing ───────────────────────────────────
-  // Priority (High/Critical=0) → SOW-Signed → likelyStart ASC
-  // Earlier-processed requests get first pick of the talent pool.
+  // Conversion % DESC → Priority → SOW-Signed → likelyStart ASC
+  // Higher-confidence deals (90%, 80%) get first pick of the talent pool.
+  // Deal Lost (0%) rows are skipped entirely in the assignment loop.
   const processOrder = [...requestsWithContext].sort((a, b) => {
+    if (a.conversionPct !== b.conversionPct) return b.conversionPct - a.conversionPct;
     if (a.priorityOrder !== b.priorityOrder) return a.priorityOrder - b.priorityOrder;
     if (a.req.sowSigned !== b.req.sowSigned) return a.req.sowSigned ? -1 : 1;
     const ad = a.req.likelyStart?.getTime() ?? Infinity;
@@ -1101,11 +1152,16 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
     fallbackUsed: boolean;
     poolExhausted: boolean;
     priorityLabel: string | null;
+    conversionPct: number;        // deal stage confidence — drives claim gating + action text
   }
   const assignments = new Map<string, RowAssignment>();
 
   for (const ctx of processOrder) {
-    const { req, windowStart, windowEnd, reqSkillset, reqSolution } = ctx;
+    const { req, windowStart, windowEnd, reqSkillset, reqSolution, conversionPct } = ctx;
+
+    // Deal Lost — skip matching entirely; row is copied as-is with no appended data
+    if (conversionPct === 0) continue;
+
     const reqSkills  = textToRequiredSkills(req.skillset ?? "", allSkills);
     const parsed     = normalizeResourceRequest(req.resourcesRequested);
     const scoreOpts  = { windowStart, windowEnd, canonicalRoles: parsed.canonicalRoles, reqSkillset, reqSolution };
@@ -1124,7 +1180,7 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
     // Widen to full pool when role is recognised but nobody holds that title
     const candidatePool = rolePool.length > 0 ? rolePool : activeCandidates;
 
-    // Score every candidate (in-memory - no extra DB calls)
+    // Score every candidate (in-memory — no extra DB calls)
     const allScored: MatchResultV2[] = candidatePool.map((emp) =>
       scoreEmployee(emp, reqSkills, scoreOpts),
     );
@@ -1152,6 +1208,12 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
       return b.matchScore - a.matchScore;
     });
 
+    // ── Claim gating: stages < 60% are soft reservations ─────────────────────
+    // High-confidence deals (≥ 60%) hard-claim the resource — blocks them for this window.
+    // Early-stage deals (< 60%) pre-identify a candidate without blocking their availability
+    // for more certain work that comes along later.
+    const hardClaim = conversionPct >= 0.60;
+
     // Pick the first candidate with no window conflict
     let picked: MatchResultV2 | null = null;
     let pickedTier = 0;
@@ -1161,12 +1223,12 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
       if (!tracker.hasConflict(candidate.employeeId, windowStart, windowEnd)) {
         picked     = candidate;
         pickedTier = availabilityTier(candidate.availableFTE);
-        tracker.claim(candidate.employeeId, windowStart, windowEnd);
+        if (hardClaim) tracker.claim(candidate.employeeId, windowStart, windowEnd);
         break;
       }
     }
 
-    // Role pool exhausted - expand to full active pool once
+    // Role pool exhausted — expand to full active pool once
     if (!picked && roleFiltered) {
       const fullScored = activeCandidates
         .map((emp) => scoreEmployee(emp, reqSkills, scoreOpts))
@@ -1186,17 +1248,17 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
         if (!tracker.hasConflict(candidate.employeeId, windowStart, windowEnd)) {
           picked     = candidate;
           pickedTier = availabilityTier(candidate.availableFTE);
-          tracker.claim(candidate.employeeId, windowStart, windowEnd);
+          if (hardClaim) tracker.claim(candidate.employeeId, windowStart, windowEnd);
           break;
         }
       }
     }
 
-    // True pool exhaustion - recommend best regardless (shared resource, clearly flagged)
+    // True pool exhaustion — recommend best regardless (shared resource, clearly flagged)
     if (!picked) {
       picked = selectionOrder[0] ?? null;
       poolExhausted = true;
-      if (picked) tracker.claim(picked.employeeId, windowStart, windowEnd);
+      if (picked && hardClaim) tracker.claim(picked.employeeId, windowStart, windowEnd);
     }
 
     if (picked) {
@@ -1213,6 +1275,7 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
           poolExhausted,
           picked.isRollingOff,
           picked.coeAligned,
+          conversionPct,
         ),
         rationale: "",
         confidence: "-",
@@ -1221,6 +1284,7 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
         fallbackUsed,
         poolExhausted,
         priorityLabel: ctx.priorityLabel,
+        conversionPct,
       });
     }
   }
@@ -1336,6 +1400,7 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
             asgn.roleFiltered,
             asgn.fallbackUsed,
             asgn.poolExhausted,
+            asgn.conversionPct,
           ),
           asgn.match.unmetSkills.join(", ") || "-",                          // 32 Unmet Skills
           asgn.plan,                                                         // 33 Plan
