@@ -121,7 +121,6 @@ export async function computeMatchRanking(params: {
 
     // ── Evidence Strength ────────────────────────────────────
     const totalEvidence = emp.employeeSkills.reduce((s, es) => s + es.evidences.length, 0);
-    // Boost for project experience docs whose tech stack / extracted skills overlap with required skills
     const reqNames = new Set(requiredSkills.map((r) => r.skillName.toLowerCase()));
     let expBoost = 0;
     for (const doc of emp.experienceDocs) {
@@ -130,6 +129,19 @@ export async function computeMatchRanking(params: {
       try { docExtracted = doc.extractedSkills ? (JSON.parse(doc.extractedSkills) as { name: string }[]) : []; } catch { /* ignore */ }
       const docSkillNames = [...techTerms, ...docExtracted.map((s) => s.name.toLowerCase())];
       if (docSkillNames.some((n) => reqNames.has(n))) expBoost += 15;
+    }
+    // Role-history boost: ETL populates alloc.role = employee.jobName at allocation time;
+    // falls back to current jobName so employees with only one project still get credit.
+    if (canonicalRoles && canonicalRoles.length > 0) {
+      const hasRoleHistory = emp.allocations.some((alloc) => {
+        const roleToCheck = alloc.role ?? emp.jobName ?? "";
+        if (!roleToCheck) return false;
+        const roleLower = roleToCheck.toLowerCase();
+        return canonicalRoles!.some(
+          (cr) => roleLower.includes(cr.toLowerCase()) || cr.toLowerCase().includes(roleLower),
+        );
+      });
+      if (hasRoleHistory) expBoost += 15;
     }
     const evidenceStrength = Math.min(totalEvidence * 10 + expBoost, 100);
 

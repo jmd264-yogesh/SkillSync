@@ -258,11 +258,8 @@ type EmployeeRow = Awaited<ReturnType<typeof fetchAllEmployees>>[number];
 async function fetchAllEmployees() {
   return db.employee.findMany({
     include: {
-      // NEW: designation level for seniority alignment
       designation: { select: { name: true, level: true } },
-      // NEW: COE for alignment bonus
       coe: { select: { name: true } },
-      // NEW: shadow flags for GHOST/SHADOW risk detection
       shadowFlags: { select: { flagType: true } },
       employeeSkills: {
         where: { status: "APPROVED" },
@@ -273,14 +270,25 @@ async function fetchAllEmployees() {
       },
       competencies: { select: { score: true } },
       allocations: {
-        // Include all non-completed allocations — needed for window-aware availability
-        where: { project: { status: { notIn: ["COMPLETED"] } } },
-        include: { project: { select: { status: true, name: true } } },
-        // NOTE: allocation, startDate, endDate, role, resourcingStatus are all scalars
-        // and included automatically by Prisma's include
+        // Fetch ALL allocations — COMPLETED ones give project-breadth experience signals.
+        // computeWindowAvailability() already skips COMPLETED; we filter in-memory below.
+        include: {
+          project: {
+            select: {
+              status: true,
+              name: true,
+              // Gap 7: tech/proposition COE now fetched for multi-signal COE alignment
+              techCoe: true,
+              propositionCoe: true,
+              category: true,
+            },
+          },
+        },
       },
       utilisationSnapshots: { orderBy: { weekStart: "desc" }, take: 4 },
       experienceDocs: {
+        // ETL now creates "ETL-SkillProfile" docs (EXTRACTED) for every employee from
+        // File 05 — these carry actual experience-years data per skill (Gap 8 fix).
         where: { extractionStatus: { in: ["EXTRACTED", "APPLIED"] } },
         select: { techStack: true, extractedSkills: true },
       },
@@ -341,29 +349,58 @@ function computeWindowAvailability(
 }
 
 // ── Experience depth score ─────────────────────────────────────────────────────
-/**
- * Proxy for years-of-experience using validated skill levels.
- * Since the raw "Experience" column from File 05 is not yet stored in the DB,
- * we derive depth from: (validatedLevel / 5) and bonus points for exceeding required level.
- */
+// Uses three signals blended together:
+//   50% — actual years-of-experience per skill from ETL-populated ExperienceDoc
+//           (File 05 Experience column → ingestExperienceDocs ETL step)
+//   25% — validated skill-level depth (validatedLevel / 5)
+//   25% — tenure from Employee.dateOfJoin (capped at 5 years = max score)
+// Bonus: +10 pts per skill where validatedLevel exceeds the required level.
+type ExtractedSkillEntry = { name: string; years?: number; score?: number };
+
 function computeExperienceScore(
   emp: EmployeeRow,
   requiredSkills: { skillId: string; requiredLevel: number }[],
 ): number {
-  if (emp.employeeSkills.length === 0) return 0;
+  // ── Tenure signal ─────────────────────────────────────────────────────────
+  const tenureYears = emp.dateOfJoin
+    ? (Date.now() - emp.dateOfJoin.getTime()) / (1000 * 60 * 60 * 24 * 365.25)
+    : 0;
+  const tenureScore = Math.min(tenureYears / 5, 1); // 0 = 0 yrs … 1.0 = 5+ yrs
 
-  // No skill filter: use average validated level across all approved skills as breadth signal
+  if (emp.employeeSkills.length === 0) return Math.round(tenureScore * 25);
+
+  // ── Build experience-years map from ExperienceDoc.extractedSkills ─────────
+  // ETL populates one "ETL-SkillProfile" doc per employee from File 05.
+  // extractedSkills = JSON array of {name, years, score}
+  const expYearsBySkill = new Map<string, number>(); // skillName.lower → years
+  for (const doc of emp.experienceDocs) {
+    let extracted: ExtractedSkillEntry[] = [];
+    try {
+      extracted = doc.extractedSkills
+        ? (JSON.parse(doc.extractedSkills) as ExtractedSkillEntry[])
+        : [];
+    } catch { /* ignore malformed JSON */ }
+    for (const es of extracted) {
+      if (es.name && (es.years ?? 0) > 0) {
+        const key = es.name.toLowerCase();
+        expYearsBySkill.set(key, Math.max(expYearsBySkill.get(key) ?? 0, es.years!));
+      }
+    }
+  }
+
+  // ── No skill filter: breadth signal (how skilled is this person overall?) ─
   if (requiredSkills.length === 0) {
     const avgLevel =
       emp.employeeSkills.reduce(
         (sum, es) => sum + (es.validatedLevel ?? es.selfAssessedLevel),
         0,
       ) / emp.employeeSkills.length;
-    return Math.round((avgLevel / 5) * 100);
+    const breadthScore = Math.round((avgLevel / 5) * 100);
+    return Math.round(breadthScore * 0.75 + tenureScore * 100 * 0.25);
   }
 
-  // Per required skill: depth ratio = validatedLevel / 5 (absolute depth)
-  // Bonus: +10 for each skill where validatedLevel > requiredLevel (exceeds requirement)
+  // ── Per required-skill: combine years + depth ─────────────────────────────
+  let yearsSum = 0;
   let depthSum = 0;
   let bonusPts = 0;
   let matchedCount = 0;
@@ -371,32 +408,81 @@ function computeExperienceScore(
   for (const req of requiredSkills) {
     const empSkill = emp.employeeSkills.find((es) => es.skill.id === req.skillId);
     if (!empSkill) continue;
+
     const level = empSkill.validatedLevel ?? empSkill.selfAssessedLevel;
-    depthSum += level / 5;
-    if (level > req.requiredLevel) bonusPts += 10;
+    depthSum += level / 5;                             // 1→0.20 … 5→1.00
+    if (level > req.requiredLevel) bonusPts += 10;    // exceeds requirement
+
+    // Experience years: prefer actual data; fall back to level-derived proxy
+    const skillKey = empSkill.skill.name.toLowerCase();
+    const yearsKnown = expYearsBySkill.get(skillKey)
+      // Also try prefix match for SubSkill variants (e.g. "Python – Data Analysis" → "python")
+      ?? [...expYearsBySkill.entries()].find(([k]) => k.startsWith(skillKey) || skillKey.startsWith(k))?.[1]
+      ?? 0;
+
+    if (yearsKnown > 0) {
+      yearsSum += Math.min(yearsKnown / 5, 1); // normalise: 5 yrs = 1.0
+    } else {
+      // Proxy: level 1=0yrs, level 5≈4+ yrs; discounted to avoid over-confidence
+      yearsSum += Math.min((level - 1) / 4, 1) * 0.6;
+    }
     matchedCount++;
   }
 
-  if (matchedCount === 0) return 0;
-  return Math.min(100, Math.round((depthSum / matchedCount) * 100) + bonusPts);
+  if (matchedCount === 0) return Math.round(tenureScore * 25);
+
+  const yearsScore = (yearsSum / matchedCount) * 100;
+  const depthScore = (depthSum / matchedCount) * 100;
+
+  // 50% years-of-experience, 25% skill depth, 25% tenure
+  const blended = Math.round(yearsScore * 0.50 + depthScore * 0.25 + tenureScore * 100 * 0.25);
+  return Math.min(100, blended + bonusPts);
 }
 
 // ── COE alignment ─────────────────────────────────────────────────────────────
-/**
- * Returns true if the employee's COE name appears in the pipeline request's
- * skillset or solution text — indicating domain alignment.
- */
+// Multi-signal check — gap 7 fix (tech_coe / proposition_coe previously unused).
+// Scoring: 0–100 across up to 4 signals.
+//  Signal A (weight 2): employee COE name appears in pipeline skillset/solution text
+//  Signal B (weight 1): active project's techCoe or propositionCoe overlaps request
+//  Signal C (weight 1): employee COE matches their active project's COE domain
 function computeCoeAlignment(
   emp: EmployeeRow,
   reqSkillset: string | null,
   reqSolution: string | null,
 ): { aligned: boolean; score: number } {
   const coeName = emp.coe?.name?.toLowerCase().trim();
-  if (!coeName) return { aligned: false, score: 0 };
-
   const searchText = `${reqSkillset ?? ""} ${reqSolution ?? ""}`.toLowerCase();
-  const aligned = searchText.includes(coeName);
-  return { aligned, score: aligned ? 100 : 0 };
+  const searchTokens = searchText.split(/[\s,;/()]+/).filter((t) => t.length >= 3);
+
+  let signals = 0;
+  const MAX_SIGNALS = 4; // sum of all possible signal weights
+
+  // Signal A (weight 2): employee COE name directly in pipeline request text
+  if (coeName && searchText.includes(coeName)) signals += 2;
+
+  // Signal B (weight 1): any active project's techCoe or propositionCoe overlaps
+  // with the pipeline request skillset/solution keywords
+  const activeProjCoes = emp.allocations
+    .filter((a) => a.project.status !== "COMPLETED")
+    .flatMap((a) => [
+      (a.project.techCoe ?? "").toLowerCase().trim(),
+      (a.project.propositionCoe ?? "").toLowerCase().trim(),
+    ])
+    .filter(Boolean);
+
+  if (
+    activeProjCoes.some((pc) =>
+      searchTokens.some((t) => pc.includes(t) || t.includes(pc)),
+    )
+  ) signals++;
+
+  // Signal C (weight 1): employee COE aligns with their current delivery domain
+  if (coeName && activeProjCoes.some((pc) => pc.includes(coeName) || coeName.includes(pc))) {
+    signals++;
+  }
+
+  const score = Math.round((signals / MAX_SIGNALS) * 100);
+  return { aligned: signals >= 1, score };
 }
 
 // ── Designation seniority gap ─────────────────────────────────────────────────
@@ -496,6 +582,12 @@ function scoreEmployee(
   const experienceScore = computeExperienceScore(emp, requiredSkills);
 
   // ── Window-Aware Availability ──────────────────────────────────────────────
+  // We now fetch ALL allocations (including COMPLETED) for project-breadth signals.
+  // Restrict availability/utilisation checks to non-completed allocations only.
+  const activeAllocations = emp.allocations.filter(
+    (a) => a.project.status !== "COMPLETED",
+  );
+
   const {
     freeCapacity: windowFreeCapacity,
     releasableFrom,
@@ -507,13 +599,13 @@ function scoreEmployee(
   const avgUtil =
     snapshots.length > 0
       ? snapshots.reduce((s, sn) => s + sn.utilisation, 0) / snapshots.length
-      : emp.allocations.length > 0
+      : activeAllocations.length > 0
       ? 1.0 // active allocations but no snapshots = assume fully utilised
       : 0;  // bench
 
   // Prefer window-based availability when we have allocation date data;
   // fall back to snapshot-derived utilisation otherwise
-  const hasWindowData = emp.allocations.some((a) => a.startDate || a.endDate);
+  const hasWindowData = activeAllocations.some((a) => a.startDate || a.endDate);
   const effectiveFreeCapacity = hasWindowData
     ? windowFreeCapacity
     : Math.max(0, 1 - avgUtil);
@@ -539,7 +631,7 @@ function scoreEmployee(
     0,
   );
 
-  // Boost for project experience docs whose tech/skills overlap required skills
+  // Tech-stack / skill-overlap boost from ExperienceDoc (now ETL-populated from File 05)
   const reqNames = new Set(requiredSkills.map((r) => r.skillName.toLowerCase()));
   let expBoost = 0;
   for (const doc of emp.experienceDocs) {
@@ -556,19 +648,25 @@ function scoreEmployee(
     if (docNames.some((n) => reqNames.has(n))) expBoost += 15;
   }
 
-  // Role-history boost: employee has done the requested role on a prior allocation
+  // Role-history boost: ETL now populates alloc.role = employee.jobName at allocation time.
+  // Falls back to current jobName so even employees with no prior allocation.role get credit
+  // when they ARE in the requested role.
   if (canonicalRoles.length > 0) {
     const hasRoleHistory = emp.allocations.some((alloc) => {
-      if (!alloc.role) return false;
-      const allocRole = alloc.role.toLowerCase();
+      const roleToCheck = alloc.role ?? emp.jobName ?? "";
+      if (!roleToCheck) return false;
+      const roleLower = roleToCheck.toLowerCase();
       return canonicalRoles.some(
-        (cr) =>
-          allocRole.includes(cr.toLowerCase()) ||
-          cr.toLowerCase().includes(allocRole),
+        (cr) => roleLower.includes(cr.toLowerCase()) || cr.toLowerCase().includes(roleLower),
       );
     });
-    if (hasRoleHistory) expBoost += 10;
+    if (hasRoleHistory) expBoost += 15;
   }
+
+  // Project breadth bonus: more distinct delivery projects = proven, versatile resource.
+  // Uses ALL allocations (including completed) — this is the entire track record.
+  const distinctProjectCount = new Set(emp.allocations.map((a) => a.projectId)).size;
+  expBoost += Math.min(distinctProjectCount * 4, 20); // max +20 pts for 5+ projects
 
   const evidenceStrength = Math.min(totalEvidence * 10 + expBoost, 100);
 
@@ -647,14 +745,30 @@ function scoreEmployee(
 }
 
 // ── Skillset text → required skills ──────────────────────────────────────────
+// Bidirectional: request text contains skill name (forward) OR any keyword in
+// the request is contained in the skill name (reverse). The reverse path catches
+// composite ExperienceDoc names like "Python – Data Analysis" when the pipeline
+// request simply says "Python".
 function textToRequiredSkills(
   text: string,
   allSkills: { id: string; name: string }[],
 ): { skillId: string; skillName: string; requiredLevel: number }[] {
   if (!text) return [];
   const lower = text.toLowerCase();
+  const keywords = lower
+    .split(/[\s,;/()]+/)
+    .map((k) => k.trim())
+    .filter((k) => k.length >= 3);
+
   return allSkills
-    .filter((s) => lower.includes(s.name.toLowerCase()))
+    .filter((s) => {
+      const skillLower = s.name.toLowerCase();
+      if (lower.includes(skillLower)) return true;
+      const primaryPart = skillLower.split(/\s*[–-]\s*/)[0]?.trim() ?? skillLower;
+      return keywords.some(
+        (kw) => skillLower.includes(kw) || primaryPart.includes(kw),
+      );
+    })
     .map((s) => ({ skillId: s.id, skillName: s.name, requiredLevel: 3 }));
 }
 
@@ -1176,7 +1290,7 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
     "Availability %", "COE Aligned", "Signal", "Risk Flags", "Unmet Skills",
   ] as const;
 
-  const altRows: unknown[][] = [altHeaders];
+  const altRows: unknown[][] = [[...altHeaders]];
   for (let i = 0; i < dataRows.length; i++) {
     const req  = dbRequests[i];
     if (!req) continue;
@@ -1285,13 +1399,21 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
     ...topRoles.map(([role, count]) => [role, count]),
     [],
     ["SCORING METHODOLOGY — v2 (7 Dimensions, sum = 100%)", null],
-    ["Skill Coverage + Depth",   "32% — required-skill coverage × proficiency level (validatedLevel / requiredLevel)"],
+    ["Skill Coverage + Depth",   "32% — required-skill coverage × proficiency level; bidirectional skill matching catches SubSkill composites (e.g. 'Python – Data Analysis' matched by 'Python' in request)"],
     ["Consulting Competency",    "22% — average of 5 behaviour scores: Stakeholder Mgmt, Advisory, Techno-Functional, Communication, Ambiguity Navigation"],
-    ["Experience Depth",         "8%  — proxy for years-of-experience via (validatedLevel / 5); +10 pts per skill where level exceeds requirement"],
-    ["Availability Fit",         `18% — window-aware free capacity within likelyStart→end window; rolling-off bonus +${ROLLING_OFF_BONUS_PTS} pts`],
+    ["Experience Depth",         "8%  — 3-signal blend: 50% actual skill-years (from File 05 Experience column via ETL) + 25% skill depth (validatedLevel/5) + 25% tenure; +10 pts when level exceeds requirement; SubSkill prefix matching for years lookup"],
+    ["Availability Fit",         `18% — window-aware free capacity within likelyStart→end window; project-only timesheets used (leave/admin excluded); rolling-off bonus +${ROLLING_OFF_BONUS_PTS} pts`],
     ["Billability Fit",          "10% — low current billability = high cost-recovery opportunity"],
-    ["Evidence Strength",        "6%  — certifications count × 10 pts + project-doc tech overlap + prior role-history match on allocations"],
-    ["COE Alignment",            "4%  — employee COE name appears in request skillset/solution text"],
+    ["Evidence Strength",        "6%  — certs × 10 pts + File 05 skill portfolio overlap + role-history match (alloc.role or current jobName) +15 pts + project breadth bonus (distinct project count × 4, max +20 pts)"],
+    ["COE Alignment",            "4%  — 3 signals: employee COE in request text (×2), active project techCoe/propositionCoe overlaps request (×1), employee COE matches their active project domain (×1)"],
+    [],
+    ["DATA SIGNAL IMPROVEMENTS (v2.1)", null],
+    ["Experience years (File 05)", "ETL now parses 'Experience' column ('1–3 yrs', '5+', '<1') → stored in ProjectExperienceDoc.extractedSkills JSON; used in Experience Depth dimension"],
+    ["Manager chain (File 01)",   "ETL two-pass links Employee.managerId from manager_id column; manager context used in team-level reporting"],
+    ["Allocation role (File 03)", "ETL stores employee.jobName as ProjectAllocation.role at allocation time; enables role-history boost in Evidence dimension"],
+    ["Timesheet filtering",       "deriveUtilisation() now filters to projectId IS NOT NULL — leave, training, admin entries no longer inflate utilisation"],
+    ["COE matching (Files 02-03)","computeCoeAlignment() reads project.techCoe + project.propositionCoe from all allocations (incl. completed) for multi-signal COE scoring"],
+    ["SubSkill matching",         "textToRequiredSkills() reverse-matches: keyword 'Python' in request matches skill 'Python – Data Analysis' from ExperienceDoc"],
     [],
     ["CONFLICT RESOLUTION", null],
     ["Request processing order", "Priority (High/Critical) → SOW-Signed → Likely Start ASC"],
@@ -1308,19 +1430,19 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
     [],
     ["AI RATIONALE", null],
     ["Applied to",   `Top ${Math.min(maxAiCalls, redeployCount)} REDEPLOY matches (5 s timeout, batches of 3)`],
-    ["Context passed", "Skill, Competency, Experience, Availability, COE Alignment, Designation Gap, Risk Flags"],
+    ["Context passed", "Skill, Competency, Experience (years), Availability, COE Alignment, Designation Gap, Risk Flags, Project Breadth"],
     ["Fallback",     "Deterministic rationale using dimension scores when AI is unavailable or times out"],
     [],
     ["DATA SOURCES", null],
-    ["File 01", "employee_details.csv — employee identity, job, location, resignation dates"],
+    ["File 01", "employee_details.csv — employee identity, job, location, manager_id, resignation dates"],
     ["File 02", "project_details.csv — project type, status, tech/proposition COE"],
     ["File 03", "Project_Allocation_Details.csv — allocation %, dates, role, resourcing status"],
-    ["File 04", "timesheet_details_2026.csv — hours, billability (→ UtilisationSnapshot)"],
-    ["File 05", "Skill_Data.xlsx — employee skills, validated scores"],
+    ["File 04", "timesheet_details_2026.csv — hours, billability (→ UtilisationSnapshot, project-only)"],
+    ["File 05", "Skill_Data.xlsx — employee skills, validated scores, experience years, SubSkill detail"],
     ["File 06", "Competency_Details.xlsx — 5 consulting-behaviour scores per employee"],
     ["File 07", "Pipeline_Details.xlsx — pipeline demand: skillset, role, priority, SOW"],
     ["File 09", "Project_Weekly_Status_Details.csv — scope/schedule/quality/csat/team RAG"],
-    ["Derived", "ShadowFlag (GHOST/SHADOW from allocation vs timesheet join), UtilisationSnapshot, RoleMixTemplate"],
+    ["Derived", "ShadowFlag (GHOST/SHADOW from allocation vs timesheet join), UtilisationSnapshot, RoleMixTemplate, ProjectExperienceDoc (ETL-SkillProfile per employee)"],
   ];
 
   const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);

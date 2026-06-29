@@ -41,6 +41,24 @@ function parseFloat_(raw: unknown): number {
   return isNaN(v) ? 0 : v;
 }
 
+// ─── Parse experience text from File 05 ─────────────────────────────────────
+// Handles: "5 Years", "3-5 Years", "< 1 Year", "10+ Years", "2 to 4 years"
+function parseExperienceYears(raw: unknown): number {
+  if (!raw) return 0;
+  const clean = String(raw).toLowerCase().trim();
+  if (!clean) return 0;
+  if (clean.includes("<") || clean.includes("less")) return 0.5;
+  const plusMatch = clean.match(/(\d+)\s*\+/);
+  if (plusMatch?.[1]) return parseInt(plusMatch[1]) + 1;
+  const rangeMatch = clean.match(/(\d+)\s*[-–to]+\s*(\d+)/);
+  if (rangeMatch?.[1] && rangeMatch?.[2]) {
+    return (parseInt(rangeMatch[1]) + parseInt(rangeMatch[2])) / 2;
+  }
+  const simpleMatch = clean.match(/(\d+(?:\.\d+)?)/);
+  if (simpleMatch?.[1]) return parseFloat(simpleMatch[1]);
+  return 0;
+}
+
 function parseBool(raw: unknown): boolean {
   if (raw === null || raw === undefined) return false;
   const s = String(raw).trim().toLowerCase();
@@ -76,6 +94,9 @@ async function ingestEmployees(): Promise<IngestStats> {
   const rows = readCsv("01. 260624 employee_details.csv");
   const stats = emptyStats();
 
+  // Collect manager links for second pass (all employees must exist first)
+  const managerLinks: Array<{ empExtId: string; mgrExtId: string }> = [];
+
   for (const row of rows) {
     // SCD-2: skip non-active versions
     if (String(row["is_active_version"]) !== "1") {
@@ -85,6 +106,12 @@ async function ingestEmployees(): Promise<IngestStats> {
 
     const externalId = String(row["employee_id"] ?? "").trim();
     if (!externalId) { stats.dropped++; continue; }
+
+    // Collect manager relationship (linked in second pass to avoid forward-reference failures)
+    const mgrExtId = String(row["manager_id"] ?? "").trim() || null;
+    if (mgrExtId && mgrExtId !== externalId) {
+      managerLinks.push({ empExtId: externalId, mgrExtId });
+    }
 
     const dateOfJoin = parseDate(row["date_of_join"]);
     const dateOfResignation = parseDate(row["date_of_resignation"]);
@@ -110,6 +137,19 @@ async function ingestEmployees(): Promise<IngestStats> {
     });
     stats.loaded++;
   }
+
+  // Second pass: link manager chains now that all employees are in the DB
+  let managerLinked = 0;
+  for (const { empExtId, mgrExtId } of managerLinks) {
+    const emp = await db.employee.findUnique({ where: { externalId: empExtId }, select: { id: true } });
+    const mgr = await db.employee.findUnique({ where: { externalId: mgrExtId }, select: { id: true } });
+    if (emp && mgr) {
+      await db.employee.update({ where: { id: emp.id }, data: { managerId: mgr.id } });
+      managerLinked++;
+    }
+  }
+  if (managerLinked > 0) stats.notes.push(`Linked ${managerLinked} manager chains`);
+
   return stats;
 }
 
@@ -235,16 +275,25 @@ async function ingestAllocations(): Promise<IngestStats> {
 
   for (const { projectExtId, employeeExtId, allocation, resourcingStatus, startDate, endDate } of agg.values()) {
     const project = await db.project.findUnique({ where: { externalId: projectExtId } });
-    const employee = await db.employee.findUnique({ where: { externalId: employeeExtId } });
+    // Fetch jobName so we can populate allocation.role — the best available proxy
+    // for the role the employee played on this project (project_rolebased_user_id
+    // from File 03 encodes the role but has no accompanying mapping table).
+    const employee = await db.employee.findUnique({
+      where: { externalId: employeeExtId },
+      select: { id: true, jobName: true },
+    });
     if (!project || !employee) { stats.dropped++; continue; }
+
+    const role = employee.jobName ?? null;
 
     await db.projectAllocation.upsert({
       where: { projectId_employeeId: { projectId: project.id, employeeId: employee.id } },
-      update: { allocation, resourcingStatus, startDate, endDate },
+      update: { allocation, resourcingStatus, startDate, endDate, role },
       create: {
         projectId: project.id,
         employeeId: employee.id,
         allocation,
+        role,
         resourcingStatus,
         startDate,
         endDate,
@@ -577,8 +626,13 @@ async function ingestWeeklyStatus(): Promise<IngestStats> {
 async function deriveUtilisation(): Promise<IngestStats> {
   const stats = emptyStats();
 
-  // Fetch all timesheets and group by (employeeId, week)
-  const timesheets = await db.timesheet.findMany({ select: { employeeId: true, date: true, hours: true, isBillable: true } });
+  // Only count timesheets logged against a real project (projectId IS NOT NULL).
+  // Rows without a projectId represent leave, training, or admin time — including
+  // them inflates utilisation and masks true availability (Gap 5 fix).
+  const timesheets = await db.timesheet.findMany({
+    select: { employeeId: true, date: true, hours: true, isBillable: true },
+    where: { projectId: { not: null } },
+  });
 
   const grouped = new Map<string, { total: number; billable: number }>();
   for (const ts of timesheets) {
@@ -727,6 +781,78 @@ async function deriveRoleMix(): Promise<IngestStats> {
   return stats;
 }
 
+// ─── Derived: ProjectExperienceDocs from File 05 skill experience data ───────
+// Populates one synthetic ProjectExperienceDoc per employee so that
+// the export engine can use ACTUAL experience-years data instead of
+// a level/5 proxy (Gap 1 + Gap 8 fixes).
+async function ingestExperienceDocs(): Promise<IngestStats> {
+  const rows = readXlsx("05. 260624 Skill_Data.xlsx");
+  const stats = emptyStats();
+
+  const employeeMap = new Map<string, string>(); // externalId → internalId
+  (await db.employee.findMany({ select: { id: true, externalId: true } }))
+    .forEach((e) => { if (e.externalId) employeeMap.set(e.externalId, e.id); });
+
+  // Collect { name, years, score } per employee from the Experience + Score columns
+  type SkillExp = { name: string; years: number; score: number };
+  const expByEmployee = new Map<string, SkillExp[]>();
+
+  for (const row of rows) {
+    const employeeExtId = String(row["employee_id"] ?? "").trim();
+    const employeeId = employeeMap.get(employeeExtId);
+    if (!employeeId) continue;
+
+    const skillName = String(row["Skill"] ?? "").trim();
+    const subSkill   = String(row["SubSkill"] ?? "").trim(); // preserve for tech-stack
+    if (!skillName) continue;
+
+    const years = parseExperienceYears(row["Experience"]);
+    const score = parseInt(String(row["Score"] ?? "0"), 10) || 0;
+
+    if (!expByEmployee.has(employeeId)) expByEmployee.set(employeeId, []);
+    expByEmployee.get(employeeId)!.push({
+      name: subSkill ? `${skillName} – ${subSkill}` : skillName,
+      years,
+      score: score / 5, // normalise 1-5 scale to 0-1
+    });
+  }
+
+  // Delete existing synthetic docs before recreating (idempotent re-run)
+  const empIds = [...expByEmployee.keys()];
+  if (empIds.length > 0) {
+    await db.projectExperienceDoc.deleteMany({
+      where: { title: "ETL-SkillProfile", employeeId: { in: empIds } },
+    });
+  }
+
+  for (const [employeeId, skills] of expByEmployee) {
+    if (skills.length === 0) continue;
+
+    // Tech-stack: top skills with ≥2 years experience (or top skills by score if no years)
+    const ranked = [...skills].sort((a, b) => (b.years || b.score * 5) - (a.years || a.score * 5));
+    const techStack = ranked
+      .slice(0, 15)
+      .map((s) => s.name)
+      .join(", ");
+
+    await db.projectExperienceDoc.create({
+      data: {
+        employeeId,
+        title: "ETL-SkillProfile",
+        projectType: "SKILL_PORTFOLIO",
+        extractionStatus: "EXTRACTED",
+        techStack: techStack || null,
+        // Store full experience data including years for the scoring engine
+        extractedSkills: JSON.stringify(skills),
+      },
+    });
+    stats.loaded++;
+  }
+
+  stats.notes.push(`Created ExperienceDocs for ${expByEmployee.size} employees with ${rows.length} skill rows`);
+  return stats;
+}
+
 // ─── Orchestrator ─────────────────────────────────────────────
 async function run() {
   // Optional: pass a step name to run only that step, e.g. `npx tsx ingest.ts 05_skill_data`
@@ -743,9 +869,10 @@ async function run() {
     { name: "06_competencies",    fn: ingestCompetencies },
     { name: "07_pipeline",        fn: ingestPipeline },
     { name: "09_weekly_status",   fn: ingestWeeklyStatus },
-    { name: "derived_utilisation",fn: deriveUtilisation },
-    { name: "derived_shadow",     fn: deriveShadowFlags },
-    { name: "derived_role_mix",   fn: deriveRoleMix },
+    { name: "derived_utilisation",    fn: deriveUtilisation },
+    { name: "derived_shadow",         fn: deriveShadowFlags },
+    { name: "derived_role_mix",       fn: deriveRoleMix },
+    { name: "derived_experience_docs",fn: ingestExperienceDocs },
   ];
 
   for (const step of steps) {
