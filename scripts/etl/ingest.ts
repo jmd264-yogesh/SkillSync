@@ -10,7 +10,7 @@ import path from "path";
 import fs from "fs";
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Prisma } from "@prisma/client";
 
 const db = new PrismaClient();
 const DATA_DIR = path.resolve(process.cwd(), "reference_files");
@@ -321,7 +321,7 @@ async function ingestTimesheets(): Promise<IngestStats> {
   await db.timesheet.deleteMany({});
 
   const BATCH = 500;
-  type TsRow = Parameters<typeof db.timesheet.createMany>[0]["data"] extends (infer T)[] ? T : never;
+  type TsRow = Prisma.TimesheetCreateManyInput;
   let batch: TsRow[] = [];
 
   const flush = async () => {
@@ -429,7 +429,7 @@ async function ingestSkillData(): Promise<IngestStats> {
       .map((es) => `${es.employeeId}__${es.skillId}`),
   );
 
-  type EsCreate = Parameters<typeof db.employeeSkill.createMany>[0]["data"] extends (infer T)[] ? T : never;
+  type EsCreate = Prisma.EmployeeSkillCreateManyInput;
   const toCreate = new Map<string, EsCreate>(); // key → data (last row wins on dupe)
 
   for (const row of rows) {
@@ -496,7 +496,7 @@ async function ingestCompetencies(): Promise<IngestStats> {
       .map((c) => `${c.employeeId}__${c.behaviour}`),
   );
 
-  type CompCreate = Parameters<typeof db.competency.createMany>[0]["data"] extends (infer T)[] ? T : never;
+  type CompCreate = Prisma.CompetencyCreateManyInput;
   const toCreate: CompCreate[] = [];
 
   for (const row of rows) {
@@ -582,7 +582,7 @@ async function ingestWeeklyStatus(): Promise<IngestStats> {
   // Truncate for idempotency — externalKey is unique so re-running is safe
   await db.weeklyStatus.deleteMany({});
 
-  type WsRow = Parameters<typeof db.weeklyStatus.createMany>[0]["data"] extends (infer T)[] ? T : never;
+  type WsRow = Prisma.WeeklyStatusCreateManyInput;
   const BATCH = 500;
   let batch: WsRow[] = [];
 

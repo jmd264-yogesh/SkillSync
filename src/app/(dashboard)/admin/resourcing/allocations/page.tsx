@@ -23,23 +23,23 @@ async function AllocationTable() {
   const bench = rows.filter((r) => r.status === "BENCH").length;
   const mismatch = rows.filter((r) => r.mismatch).length;
 
-  // P1 — Workforce decision line
+  // P1 - Workforce decision line
   const overPct = over / rows.length;
   const decisionVariant = overPct > 0.4 ? "NO" : overPct > 0.2 || bench > rows.length * 0.3 ? "YES_WITH_CONDITIONS" : "YES";
   const decisionHeadline = overPct > 0.4
-    ? `${over} employees over-allocated — immediate rebalancing required`
+    ? `${over} employees over-allocated - immediate rebalancing required`
     : over > 0
-    ? `${over} over-allocated, ${bench} on bench — review recommended`
+    ? `${over} over-allocated, ${bench} on bench - review recommended`
     : bench > rows.length * 0.3
-    ? `${bench} employees on bench — pipeline matching opportunity`
+    ? `${bench} employees on bench - pipeline matching opportunity`
     : "Workforce allocation within healthy range";
   const decisionAction = over > 0
     ? `Reassign ${over} over-allocated employee${over !== 1 ? "s" : ""} or reduce project load to free capacity`
     : bench > 0
     ? `Match ${bench} bench resource${bench !== 1 ? "s" : ""} to active pipeline requests via Match Engine`
-    : "No immediate action required — monitor weekly";
+    : "No immediate action required - monitor weekly";
 
-  // P3 — Rolling-off strip: employees whose earliest allocation ends in next 14 days
+  // P3 - Rolling-off strip: employees whose earliest allocation ends in next 14 days
   const now = new Date();
   const cutoff14 = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
   const rollingOff = rows.filter(
@@ -48,7 +48,7 @@ async function AllocationTable() {
 
   return (
     <div className="space-y-4">
-      {/* P1 — Decision line */}
+      {/* P1 - Decision line */}
       <DecisionCard
         headline={decisionHeadline}
         decisionVariant={decisionVariant}
@@ -61,7 +61,7 @@ async function AllocationTable() {
         ]}
       />
 
-      {/* P4 — Rolling-off strip with AI reallocation proposals */}
+      {/* P4 - Rolling-off strip with AI reallocation proposals */}
       <RollingOffStrip
         rollingOff={rollingOff.map((r) => ({
           employeeId: r.employeeId,
@@ -88,7 +88,7 @@ async function AllocationTable() {
         ))}
       </div>
 
-      {/* Table — client component with search + status filter */}
+      {/* Table - client component with search + status filter */}
       <AllocationTableClient rows={rows} />
     </div>
   );

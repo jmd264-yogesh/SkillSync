@@ -4,7 +4,7 @@
  */
 
 export interface ParsedRole {
-  canonicalRoles: string[];  // OR list — employee matches if jobName contains any
+  canonicalRoles: string[];  // OR list - employee matches if jobName contains any
   count: number;
   isEM: boolean;
   display: string;           // clean label for display

@@ -27,8 +27,8 @@ Answer staffing and capacity questions grounded ONLY in tool results. Do not inv
 
 Today's date: ${today}. Use this when reasoning about allocation dates:
 - "active" allocation = startDate <= today AND (endDate >= today OR endDate is null)
-- "upcoming" allocation = startDate > today (not yet started — person is currently available)
-- "completed" allocation = endDate < today (person has rolled off — now available)
+- "upcoming" allocation = startDate > today (not yet started - person is currently available)
+- "completed" allocation = endDate < today (person has rolled off - now available)
 - "releasableFrom" = earliest date an employee's current allocations end
 
 Plan your tool calls, execute them, then answer DECISION-FIRST:
@@ -39,7 +39,7 @@ Plan your tool calls, execute them, then answer DECISION-FIRST:
 
 Rules:
 - SOW-signed requests are confirmed demand. Unsigned = probable, weighted by deal stage.
-- Skill and competency are separate dimensions — name them separately when relevant.
+- Skill and competency are separate dimensions - name them separately when relevant.
 - If a tool is unavailable for something, say so and state what data you'd need.
 - Keep it readable by a non-technical RM. No jargon without explanation.
 - Format your response in Markdown: use ### for section headings, **bold** for key figures, tables for comparisons, numbered lists for action steps.
@@ -88,7 +88,7 @@ function compactAllocResult(e: Record<string, unknown>) {
     actualUtil: typeof e["actualUtil"] === "number" ? Math.round(e["actualUtil"]) : 0,
     billableUtil: typeof e["billableUtil"] === "number" ? Math.round(e["billableUtil"]) : 0,
     activeProjectCount: e["activeProjectCount"],
-    // When this employee's current allocations end — null means no active alloc (available now)
+    // When this employee's current allocations end - null means no active alloc (available now)
     releasableFrom: releasable instanceof Date
       ? releasable.toISOString().split("T")[0]
       : typeof releasable === "string"

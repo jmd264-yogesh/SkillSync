@@ -1,5 +1,12 @@
 import { z } from "zod";
 
+export const createClusterSchema = z.object({
+  name: z.string().min(1, "Cluster name is required").max(100),
+  description: z.string().max(500).optional(),
+});
+
+export type CreateClusterInput = z.infer<typeof createClusterSchema>;
+
 export const createCoeSchema = z.object({
   name: z.string().min(1, "COE name is required").max(100),
   description: z.string().max(500).optional(),

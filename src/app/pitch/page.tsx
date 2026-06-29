@@ -5,7 +5,7 @@ import { AnimatedNumber } from "@/components/pitch/AnimatedNumber";
 import { CategoryChart } from "@/components/pitch/CategoryChart";
 
 export const metadata: Metadata = {
-  title: "SkillSphere — Resourcing CoLab",
+  title: "SkillSphere - Resourcing CoLab",
   description: "We turn resourcing from a negotiation into a decision.",
 };
 
@@ -19,7 +19,7 @@ const DELIVERABLES = [
     href: "/admin/resourcing/match",
     what: "Two-dimension scoring: Technical Skill × Consulting Competency, ranked by composite 100-point match score.",
     decision: "REDEPLOY · HIRE · PARTIAL HIRE",
-    ai: "Match rationale — 2–4 sentence explanation of fit for each top candidate.",
+    ai: "Match rationale - 2–4 sentence explanation of fit for each top candidate.",
     color: "#38BDF8",
   },
   {
@@ -29,7 +29,7 @@ const DELIVERABLES = [
     href: "/admin/resourcing/health",
     what: "RAG signals from weekly status + billability leakage from timesheet join + shadow/ghost detection.",
     decision: "Investigate · Formalise shadows · Trigger ramp-down",
-    ai: "Root-cause diagnosis — 3-sentence analysis of what's driving health flags.",
+    ai: "Root-cause diagnosis - 3-sentence analysis of what's driving health flags.",
     color: "#A78BFA",
   },
   {
@@ -49,7 +49,7 @@ const DELIVERABLES = [
     href: "/admin/resourcing/outlook",
     what: "SOW-signed (confirmed) vs unsigned (probable, probability-weighted) demand matrix vs current supply over 6 months.",
     decision: "Hire now (confirmed shortfall) · Monitor (probable-only)",
-    ai: "Early-warning executive narrative — first shortfall month, at-risk roles, recommended actions.",
+    ai: "Early-warning executive narrative - first shortfall month, at-risk roles, recommended actions.",
     color: "#FBBF24",
   },
   {
@@ -69,7 +69,7 @@ const DELIVERABLES = [
     href: "/admin/copilot",
     what: "Agentic tool-use loop: model decides which tools to call (match, health, outlook), iterates, then delivers a decision-first answer with citations.",
     decision: "\"Can we take on 3 Data Platform + 1 AI POC in August without hurting delivery?\"",
-    ai: "Full agentic orchestration — not a chatbot, a decision engine with tool citations.",
+    ai: "Full agentic orchestration - not a chatbot, a decision engine with tool citations.",
     color: "#818CF8",
     highlight: true,
   },
@@ -84,26 +84,26 @@ const DIFFERENTIATORS = [
   {
     icon: "◎",
     title: "Leakage Detection",
-    body: "Shadow resources and billability leakage are found by joining allocation records × timesheet entries — hidden costs visible nowhere else in standard tools.",
+    body: "Shadow resources and billability leakage are found by joining allocation records × timesheet entries - hidden costs visible nowhere else in standard tools.",
   },
   {
     icon: "▷",
     title: "Decision-First UI",
-    body: "Every screen ends in a coloured decision strip (YES / YES WITH CONDITIONS / NO) with a one-line action. No dashboards — only decision cards.",
+    body: "Every screen ends in a coloured decision strip (YES / YES WITH CONDITIONS / NO) with a one-line action. No dashboards - only decision cards.",
   },
   {
     icon: "◈",
     title: "Data-Gap Honesty",
-    body: "Coverage confidence badges (HIGH / MEDIUM / LOW) on every AI output. Where data is sparse, a named production fix is stated — no hidden assumptions.",
+    body: "Coverage confidence badges (HIGH / MEDIUM / LOW) on every AI output. Where data is sparse, a named production fix is stated - no hidden assumptions.",
   },
 ];
 
 const DEMO_STEPS = [
   { step: 1, time: "0:00", title: "Allocation Board", sub: "Who's over-allocated right now?", href: "/admin/resourcing/allocations", action: "Decision strip shows: Rebalance 3 over-allocated employees. Blue strip names who frees up in 14 days." },
-  { step: 2, time: "1:00", title: "Match Engine", sub: "Who fits the Analytics project?", href: "/admin/resourcing/match", action: "Decision: REDEPLOY [name] — skill 78%, competency 64%, 100% available. A number, not a discussion." },
+  { step: 2, time: "1:00", title: "Match Engine", sub: "Who fits the Analytics project?", href: "/admin/resourcing/match", action: "Decision: REDEPLOY [name] - skill 78%, competency 64%, 100% available. A number, not a discussion." },
   { step: 3, time: "2:30", title: "Health Radar", sub: "Which projects are at risk?", href: "/admin/resourcing/health", action: "Decision: Formalise 2 shadow resources on Project X. Ramp-down panel: 3.5 FTE releasable for redeployment." },
-  { step: 4, time: "3:45", title: "Simulator", sub: "3 Data Platform + 1 AI POC — feasible?", href: "/admin/resourcing/simulator", action: "Decision: YES WITH REDEPLOYMENTS — redeploy 2 FTE from ramp-downs, hire 1 Solutions Architect." },
-  { step: 5, time: "5:00", title: "Pipeline Outlook", sub: "What's the 6-month picture?", href: "/admin/resourcing/outlook", action: "Decision: Confirmed-only shortfall from August — initiate hiring now. Probable-only: monitor." },
+  { step: 4, time: "3:45", title: "Simulator", sub: "3 Data Platform + 1 AI POC - feasible?", href: "/admin/resourcing/simulator", action: "Decision: YES WITH REDEPLOYMENTS - redeploy 2 FTE from ramp-downs, hire 1 Solutions Architect." },
+  { step: 5, time: "5:00", title: "Pipeline Outlook", sub: "What's the 6-month picture?", href: "/admin/resourcing/outlook", action: "Decision: Confirmed-only shortfall from August - initiate hiring now. Probable-only: monitor." },
   { step: 6, time: "5:45", title: "RM Copilot", sub: "The whole question in one answer", href: "/admin/copilot", action: "\"Can we take on 3 Data Platform + 1 AI POC in August?\" Copilot calls match + health + outlook tools and returns a cite-backed decision." },
   { step: 7, time: "6:30", title: "Project Experience", sub: "AI extracts skills from a write-up", href: "/employee/my-experience", action: "Upload a project story → AI extracts skills → submitted as PENDING → once approved, boosts match score." },
 ];
@@ -302,7 +302,7 @@ export default async function PitchPage() {
                 {
                   icon: "01",
                   title: "No single view of capacity",
-                  body: "Allocation records and timesheet actuals live in separate systems. Nobody knows the real utilisation — only the planned one.",
+                  body: "Allocation records and timesheet actuals live in separate systems. Nobody knows the real utilisation - only the planned one.",
                   accent: "#F87171",
                 },
                 {
@@ -396,7 +396,7 @@ export default async function PitchPage() {
         <section className="pitch-section px-6 py-20" style={{ background: "#0A1628" }}>
           <div className="max-w-5xl mx-auto">
             <p className="text-xs font-bold tracking-widest uppercase mb-3" style={{ color: "#38BDF8" }}>Architecture</p>
-            <h2 className="text-3xl md:text-4xl font-bold mb-12">From Excel to decision — 5 layers</h2>
+            <h2 className="text-3xl md:text-4xl font-bold mb-12">From Excel to decision - 5 layers</h2>
 
             <div className="space-y-3">
               {/* Layer 1: Source */}
@@ -406,7 +406,7 @@ export default async function PitchPage() {
               >
                 <div className="flex flex-wrap items-center gap-3 mb-3">
                   <span className="text-[10px] font-bold tracking-widest uppercase px-2 py-1 rounded" style={{ background: "rgba(56,189,248,0.1)", color: "#38BDF8" }}>Layer 1</span>
-                  <span className="text-sm font-semibold">Source Data — 8 Excel/CSV files</span>
+                  <span className="text-sm font-semibold">Source Data - 8 Excel/CSV files</span>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {["employee_master", "project_allocations", "timesheets", "pipeline_requests", "weekly_status", "competency_assessments", "role_mix_templates", "shadow_flags"].map((f) => (
@@ -428,7 +428,7 @@ export default async function PitchPage() {
               >
                 <div className="flex flex-wrap items-center gap-3 mb-3">
                   <span className="text-[10px] font-bold tracking-widest uppercase px-2 py-1 rounded" style={{ background: "rgba(52,211,153,0.1)", color: "#34D399" }}>Layer 2</span>
-                  <span className="text-sm font-semibold">SQLite / PostgreSQL — 33 Prisma models</span>
+                  <span className="text-sm font-semibold">SQLite / PostgreSQL - 33 Prisma models</span>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {["Employee", "Project", "Timesheet", "Competency", "PipelineRequest", "WeeklyStatus", "ShadowFlag", "ProjectAllocation", "UtilisationSnapshot", "IngestReport", "...23 more"].map((m) => (
@@ -454,7 +454,7 @@ export default async function PitchPage() {
                   </div>
                 ))}
               </div>
-              <div className="text-center text-xs" style={{ color: "#334155" }}>Layer 3: Service layer — pure business logic, no auth</div>
+              <div className="text-center text-xs" style={{ color: "#334155" }}>Layer 3: Service layer - pure business logic, no auth</div>
 
               {/* Arrow */}
               <div style={{ width: 2, height: 24, background: "linear-gradient(180deg, #1E3460 0%, #818CF8 100%)", margin: "0 auto" }} />
@@ -466,11 +466,11 @@ export default async function PitchPage() {
               >
                 <div className="flex flex-wrap items-center gap-3 mb-3">
                   <span className="text-[10px] font-bold tracking-widest uppercase px-2 py-1 rounded" style={{ background: "rgba(129,140,248,0.12)", color: "#A5B4FC" }}>Layer 4</span>
-                  <span className="text-sm font-semibold">AI Layer — Google Gemini 1.5 Pro</span>
+                  <span className="text-sm font-semibold">AI Layer - Google Gemini 1.5 Pro</span>
                   <span className="text-[10px]" style={{ color: "#64748B" }}>src/lib/ai/</span>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {["rationale.ts — match explanation", "rootcause.ts — health diagnosis", "narrative.ts — forecast early-warning", "confidence.ts — data coverage check", "copilot/agent.ts — agentic tool loop"].map((m) => (
+                  {["rationale.ts - match explanation", "rootcause.ts - health diagnosis", "narrative.ts - forecast early-warning", "confidence.ts - data coverage check", "copilot/agent.ts - agentic tool loop"].map((m) => (
                     <span key={m} className="text-xs px-2 py-1 rounded font-mono" style={{ background: "rgba(129,140,248,0.08)", color: "#C7D2FE", border: "1px solid rgba(129,140,248,0.15)" }}>{m}</span>
                   ))}
                 </div>
@@ -495,7 +495,7 @@ export default async function PitchPage() {
                   </Link>
                 ))}
               </div>
-              <div className="text-center text-xs" style={{ color: "#334155" }}>Layer 5: Next.js 16 App Router — Server Components + Server Actions</div>
+              <div className="text-center text-xs" style={{ color: "#334155" }}>Layer 5: Next.js 16 App Router - Server Components + Server Actions</div>
             </div>
           </div>
         </section>
@@ -651,7 +651,7 @@ export default async function PitchPage() {
 
                 {/* Named gaps */}
                 <div className="rounded-xl border p-4" style={{ background: "#0D1B35", borderColor: "#1E3460" }}>
-                  <p className="text-xs font-semibold mb-3" style={{ color: "#94A3B8" }}>Named data gaps — production fixes stated</p>
+                  <p className="text-xs font-semibold mb-3" style={{ color: "#94A3B8" }}>Named data gaps - production fixes stated</p>
                   <div className="space-y-3">
                     {DATA_GAPS.map((g) => (
                       <div key={g.gap} className="border-l-2 pl-3" style={{ borderColor: "#FBBF24" }}>
@@ -717,7 +717,7 @@ export default async function PitchPage() {
           className="px-6 py-12 text-center"
           style={{ background: "#060C18", borderTop: "1px solid #1E3460" }}
         >
-          <p className="text-2xl font-bold mb-2 pitch-gradient-text">SkillSphere — Resourcing CoLab</p>
+          <p className="text-2xl font-bold mb-2 pitch-gradient-text">SkillSphere - Resourcing CoLab</p>
           <p className="text-sm mb-6" style={{ color: "#64748B" }}>JManage Hackathon 2026 · Team submission</p>
 
           {/* Live stat summary */}
@@ -758,7 +758,7 @@ export default async function PitchPage() {
           </div>
 
           <p className="mt-8 text-[10px]" style={{ color: "#1E3460" }}>
-            All numbers on this page are live from the database — no hardcoded values.
+            All numbers on this page are live from the database - no hardcoded values.
           </p>
         </footer>
       </main>

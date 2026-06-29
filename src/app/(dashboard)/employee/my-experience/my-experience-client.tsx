@@ -101,7 +101,7 @@ export function MyExperienceClient({ docs }: Props) {
       return;
     }
 
-    toast.success(`${result.count} skill${result.count !== 1 ? "s" : ""} added to your profile — pending manager approval`);
+    toast.success(`${result.count} skill${result.count !== 1 ? "s" : ""} added to your profile - pending manager approval`);
     setReviewState(null);
   }
 
@@ -112,7 +112,7 @@ export function MyExperienceClient({ docs }: Props) {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Project Experience</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Document your project work — AI extracts the skills you demonstrated and adds them to your profile.
+            Document your project work - AI extracts the skills you demonstrated and adds them to your profile.
           </p>
         </div>
         <Button onClick={() => setIsFormOpen(true)} size="sm" className="gap-1.5">
@@ -253,7 +253,7 @@ export function MyExperienceClient({ docs }: Props) {
                     {doc.extractionStatus === "APPLIED" && (
                       <p className="text-xs text-green-600 font-medium flex items-center gap-1.5 flex-1">
                         <CheckCircle2 className="h-3.5 w-3.5" />
-                        Skills applied — pending approval
+                        Skills applied - pending approval
                       </p>
                     )}
                   </div>
@@ -296,7 +296,7 @@ export function MyExperienceClient({ docs }: Props) {
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-sm font-medium text-slate-800">{skill.name}</span>
                       <Badge variant="outline" className="text-[10px] shrink-0">
-                        Level {skill.level} — {COMPETENCY_LEVEL_LABELS[skill.level]}
+                        Level {skill.level} - {COMPETENCY_LEVEL_LABELS[skill.level]}
                       </Badge>
                     </div>
                     {skill.reasoning && (

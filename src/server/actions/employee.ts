@@ -11,6 +11,7 @@ export async function getEmployees() {
     include: {
       coe: true,
       designation: true,
+      cluster: true,
       manager: { select: { id: true, name: true } },
       user: { select: { id: true, email: true, role: true } },
       _count: { select: { employeeSkills: true, reportees: true } },
@@ -34,6 +35,7 @@ export async function createEmployee(formData: FormData) {
     coeId: formData.get("coeId") || undefined,
     designationId: formData.get("designationId") || undefined,
     managerId: formData.get("managerId") || undefined,
+    clusterId: formData.get("clusterId") || undefined,
   });
 
   if (!parsed.success) {
@@ -67,6 +69,7 @@ export async function createEmployee(formData: FormData) {
         coeId: parsed.data.coeId || null,
         designationId: parsed.data.designationId || null,
         managerId: parsed.data.managerId || null,
+        clusterId: parsed.data.clusterId || null,
       },
     });
 
@@ -91,6 +94,7 @@ export async function updateEmployee(id: string, formData: FormData) {
   const coeId = (formData.get("coeId") as string) || null;
   const designationId = (formData.get("designationId") as string) || null;
   const managerId = (formData.get("managerId") as string) || null;
+  const clusterId = (formData.get("clusterId") as string) || null;
   const role = formData.get("role") as UserRole | null;
 
   if (!name || !email) {
@@ -111,7 +115,7 @@ export async function updateEmployee(id: string, formData: FormData) {
   await db.$transaction(async (tx) => {
     await tx.employee.update({
       where: { id },
-      data: { name, email, coeId, designationId, managerId },
+      data: { name, email, coeId, designationId, managerId, clusterId },
     });
 
     const updateData: { name: string; email: string; role?: UserRole } = { name, email };

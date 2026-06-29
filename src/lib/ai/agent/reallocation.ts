@@ -141,7 +141,7 @@ export async function proposeReallocations(windowDays = 14): Promise<Reallocatio
         })),
         note:
           gaps.length > 0
-            ? `${gaps.length} open gap(s) found in pipeline — good redeployment opportunity.`
+            ? `${gaps.length} open gap(s) found in pipeline - good redeployment opportunity.`
             : "No confirmed pipeline gaps found in the next 3 months.",
       };
     }
@@ -178,7 +178,7 @@ Call get_rolling_off first, then find matches for each person, then record a pro
       const emp = rollingOff.find((r) => r.employeeId === p.employeeId);
       return {
         ...p,
-        employeeCode: emp?.employeeCode ?? "—",
+        employeeCode: emp?.employeeCode ?? "-",
         currentRole: emp?.jobName ?? null,
         releasableFrom: emp?.releasableFrom ?? null,
         freeCapacityPct: emp ? Math.round((1 - emp.actualUtil) * 100) : 100,
@@ -197,9 +197,9 @@ Call get_rolling_off first, then find matches for each person, then record a pro
       currentRole: e.jobName,
       releasableFrom: e.releasableFrom,
       freeCapacityPct: Math.round((1 - e.actualUtil) * 100),
-      proposedProjectDescription: "Match Engine — run manually to find open pipeline",
+      proposedProjectDescription: "Match Engine - run manually to find open pipeline",
       fitScore: 0,
-      fitRationale: "AI unavailable — use Match Engine for a ranked recommendation.",
+      fitRationale: "AI unavailable - use Match Engine for a ranked recommendation.",
       startDate: e.releasableFrom?.toISOString().slice(0, 10) ?? "",
       decisionVariant: "NEUTRAL" as const,
     }));

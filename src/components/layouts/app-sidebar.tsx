@@ -28,7 +28,6 @@ const adminNavItems: NavItem[] = [
   { title: "Users & Permissions", href: "/admin/users",               icon: UserCheck },
   { title: "Talent Discovery",    href: "/admin/talent-discovery",    icon: Search },
   { title: "Resource Management", href: "/admin/resource-management", icon: LayoutGrid },
-  { title: "Feedback & Promotion",href: "/admin/feedback/cycles",     icon: MessageSquare },
 ];
 
 const resourcingNavItems: NavItem[] = [
@@ -47,7 +46,6 @@ const managerNavItems: NavItem[] = [
   { title: "Approvals",     href: "/manager/approvals",     icon: ClipboardCheck },
   { title: "Team Reports",  href: "/manager/team-reports",  icon: FileText },
   { title: "Team Learning", href: "/manager/team-learning", icon: GraduationCap },
-  { title: "Feedback",      href: "/manager/feedback",      icon: MessageSquare },
 ];
 
 const employeeNavItems: NavItem[] = [

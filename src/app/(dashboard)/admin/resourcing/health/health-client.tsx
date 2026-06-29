@@ -64,7 +64,7 @@ function Pagination({
         >
           ← Prev
         </Button>
-        {/* Page number chips — show up to 5 around current page */}
+        {/* Page number chips - show up to 5 around current page */}
         {Array.from({ length: totalPages }, (_, i) => i + 1)
           .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
           .reduce<(number | "…")[]>((acc, p, i, arr) => {
@@ -273,12 +273,12 @@ export function HealthClient({
         </div>
       )}
 
-      {/* Ramp-down candidates — paginated */}
+      {/* Ramp-down candidates - paginated */}
       {rampDownProjects.length > 0 && (
         <div className="bg-blue-50/60 border border-blue-100 rounded-lg px-5 py-4">
           <p className="text-sm font-semibold text-blue-800 mb-2">
             {rampDownProjects.length} project{rampDownProjects.length !== 1 ? "s" : ""} winding down
-            {" "}— {totalReleasable.toFixed(1)} FTE available for redeployment
+            {" "}- {totalReleasable.toFixed(1)} FTE available for redeployment
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {rampSlice.map((p) => (
@@ -341,12 +341,12 @@ export function HealthClient({
         )}
       </div>
 
-      {/* Project cards — paginated */}
+      {/* Project cards - paginated */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <p className="text-xs text-muted-foreground">
             {filteredProjects.length} project{filteredProjects.length !== 1 ? "s" : ""}
-            {filteredProjects.length !== projects.length ? ` (filtered from ${projects.length})` : ""} — page {projectPage} of {Math.max(1, Math.ceil(filteredProjects.length / PROJECT_PAGE_SIZE))}
+            {filteredProjects.length !== projects.length ? ` (filtered from ${projects.length})` : ""} - page {projectPage} of {Math.max(1, Math.ceil(filteredProjects.length / PROJECT_PAGE_SIZE))}
           </p>
         </div>
 
@@ -367,11 +367,11 @@ export function HealthClient({
               decisionVariant={variant}
               action={
                 p.isRampDown
-                  ? `Ramp-down: ${p.releasableFTE.toFixed(1)} FTE releasable — plan redeployment now`
+                  ? `Ramp-down: ${p.releasableFTE.toFixed(1)} FTE releasable - plan redeployment now`
                   : p.shadowCount > 0
                   ? `Formalise ${p.shadowCount} shadow resource(s) or remove unbillable hours`
                   : p.leakageHours > 0
-                  ? `Investigate ${p.leakageHours.toFixed(0)}h unbillable — convert to billable or remove`
+                  ? `Investigate ${p.leakageHours.toFixed(0)}h unbillable - convert to billable or remove`
                   : "No immediate action required"
               }
               evidence={[

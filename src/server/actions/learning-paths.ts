@@ -41,7 +41,7 @@ function generateSteps(skillName: string, fromLevel: number, toLevel: number): L
       steps.push({
         order: order++,
         type: "course",
-        title: `${skillName} — Foundations`,
+        title: `${skillName} - Foundations`,
         description: `Learn the fundamentals of ${skillName} to reach ${nextName} level`,
         duration: "6–10 hours",
       });
@@ -49,7 +49,7 @@ function generateSteps(skillName: string, fromLevel: number, toLevel: number): L
       steps.push({
         order: order++,
         type: "course",
-        title: `${skillName} — Core Concepts`,
+        title: `${skillName} - Core Concepts`,
         description: `Build hands-on experience and deepen understanding`,
         duration: "8–16 hours",
       });

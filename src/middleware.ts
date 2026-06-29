@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 
 const publicRoutes = ["/login", "/register"];
-// Accessible to everyone (authenticated or not) — no redirect either way
+// Accessible to everyone (authenticated or not) - no redirect either way
 const openRoutes = ["/pitch"];
 
 export default auth((req) => {

@@ -416,7 +416,7 @@ const TABS = [
           <DialogHeader>
             <DialogTitle>
               {editingMapping
-                ? `Edit Target Level — ${editingMapping.name}`
+                ? `Edit Target Level - ${editingMapping.name}`
                 : `Add Skill Mapping to ${
                     activeTab === "coe"
                       ? coes.find((c) => c.id === selectedCoeId)?.name || "COE"
@@ -435,7 +435,7 @@ const TABS = [
                 className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 required
               >
-                <option value="">— Select Skill —</option>
+                <option value="">- Select Skill -</option>
                 {availableSkills.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name} ({s.category})

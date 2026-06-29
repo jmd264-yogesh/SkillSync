@@ -11,7 +11,7 @@ export interface AgentResult {
 function capOutput(name: string, data: unknown, maxChars = 2500): string {
   const s = JSON.stringify(data);
   return s.length > maxChars
-    ? s.slice(0, maxChars) + `...[capped — showing first ${maxChars} chars of ${name} result]`
+    ? s.slice(0, maxChars) + `...[capped - showing first ${maxChars} chars of ${name} result]`
     : s;
 }
 
@@ -22,7 +22,7 @@ function summarizeOutput(name: string, output: unknown): string {
     if ("totalShortfall" in o)
       return `demand: ${String(o["totalDemandFTE"] ?? "?")} FTE, shortfall: ${String(o["totalShortfall"] ?? "?")} FTE`;
     if ("safe" in o)
-      return `health-check: ${o["safe"] ? "SAFE — no conflicts" : `CONFLICT — ${JSON.stringify(o["conflicts"]).slice(0, 80)}`}`;
+      return `health-check: ${o["safe"] ? "SAFE - no conflicts" : `CONFLICT - ${JSON.stringify(o["conflicts"]).slice(0, 80)}`}`;
     if ("recorded" in o) return `plan #${String(o["planIndex"] ?? "?")} recorded`;
     if ("interventionIndex" in o) return `triage #${String(o["interventionIndex"] ?? "?")} recorded`;
     if ("proposalIndex" in o) return `proposal #${String(o["proposalIndex"] ?? "?")} recorded`;

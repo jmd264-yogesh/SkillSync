@@ -3,7 +3,7 @@
 import { useState } from "react";
 import {
   GraduationCap, BookOpen, Code2, ClipboardCheck, Award, FolderKanban,
-  TrendingUp, ChevronRight, Flame, Clock,
+  TrendingUp, ChevronRight, Flame, Clock, Sparkles,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/shared/page-header";
@@ -30,9 +30,11 @@ const GAP_STYLE = (gap: number) => ({
 
 interface LearningPathsClientProps {
   paths: RecommendedPath[];
+  aiSummary?: string | null;
+  aiConfigured?: boolean;
 }
 
-export function LearningPathsClient({ paths }: LearningPathsClientProps) {
+export function LearningPathsClient({ paths, aiSummary, aiConfigured }: LearningPathsClientProps) {
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(
     paths.length > 0 ? (paths[0]?.skillId ?? null) : null
   );
@@ -57,6 +59,19 @@ export function LearningPathsClient({ paths }: LearningPathsClientProps) {
   return (
     <div>
       <PageHeader title="Learning Paths" description="Personalized development roadmap based on your skill gaps" />
+
+      {/* AI Strategy Summary */}
+      {aiSummary && (
+        <div className="mb-5 rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 flex gap-3">
+          <div className="h-8 w-8 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0 mt-0.5">
+            <Sparkles className="h-4 w-4 text-indigo-600" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wider mb-1.5">AI Strategy</p>
+            <p className="text-sm text-indigo-900 leading-relaxed">{aiSummary}</p>
+          </div>
+        </div>
+      )}
 
       {/* Summary stats */}
       <div className="grid grid-cols-3 gap-4 mb-7">

@@ -85,7 +85,7 @@ export const COMPETENCY_BEHAVIOURS = [
 
 export type CompetencyBehaviour = (typeof COMPETENCY_BEHAVIOURS)[number];
 
-// Match score weights v1 — 5 dimensions (used by matching.service.ts / UI)
+// Match score weights v1 - 5 dimensions (used by matching.service.ts / UI)
 // Must sum to 1.0
 export const MATCH_WEIGHTS = {
   skill: 0.35,
@@ -95,7 +95,7 @@ export const MATCH_WEIGHTS = {
   evidence: 0.08,
 } as const;
 
-// Match score weights v2 — 7 dimensions (used by excel-export.service.ts / CLI)
+// Match score weights v2 - 7 dimensions (used by excel-export.service.ts / CLI)
 // Adds Experience Depth (proxy for years-of-experience) and COE Alignment.
 // Must sum to 1.0
 export const MATCH_WEIGHTS_V2 = {

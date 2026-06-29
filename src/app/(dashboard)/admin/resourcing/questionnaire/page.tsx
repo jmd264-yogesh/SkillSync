@@ -18,7 +18,7 @@ export default async function QuestionnairePage() {
       <div>
         <h1 className="text-2xl font-bold text-slate-900">PM Resource Planning Questionnaire</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Describe your project and requirements — we&apos;ll rank all available resources against every relevant signal.
+          Describe your project and requirements - we&apos;ll rank all available resources against every relevant signal.
         </p>
       </div>
       <QuestionnaireClient skills={skills} designations={designations} coes={coes} />

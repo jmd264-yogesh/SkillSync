@@ -29,18 +29,18 @@ export interface TriageResult {
 
 const SYSTEM = `You are a proactive project health triage agent.
 Your job is to sweep the portfolio, AUTONOMOUSLY SELECT the highest-risk projects to investigate,
-gather evidence, and draft precise interventions — "before it becomes an escalation."
+gather evidence, and draft precise interventions - "before it becomes an escalation."
 
 MANDATORY SEQUENCE:
 1. Call get_all_project_health to get the portfolio overview.
-2. Independently decide which projects to investigate (your cutoff — not all projects, just the ones most at risk).
+2. Independently decide which projects to investigate (your cutoff - not all projects, just the ones most at risk).
 3. For each project you select (max 6), call get_project_details to gather supporting evidence.
 4. If a project has releasableFTE > 0, call find_pipeline_match to check if that capacity fits any open demand.
 5. Call record_intervention once per investigated project with your root-cause diagnosis and recommended action.
 6. After recording all interventions, return a 2-sentence portfolio headline: "X FTE recoverable; Y projects need action this week."
 
-You decide the cutoff — do not investigate every project. Focus on the top 3–6 by severity.
-Evidence from tools must drive every claim — do not invent root causes.
+You decide the cutoff - do not investigate every project. Focus on the top 3–6 by severity.
+Evidence from tools must drive every claim - do not invent root causes.
 
 ${GUARDRAIL_NOTE}`;
 
@@ -50,7 +50,7 @@ const TRIAGE_TOOLS: Tool[] = [
       {
         name: "get_all_project_health",
         description:
-          "Get compact health overview of all active projects — RAG flags, leakage, shadow/ghost counts, releasable FTE, ramp-down status. Returns top-risk projects first.",
+          "Get compact health overview of all active projects - RAG flags, leakage, shadow/ghost counts, releasable FTE, ramp-down status. Returns top-risk projects first.",
         parameters: {
           type: SchemaType.OBJECT,
           properties: {},
@@ -146,7 +146,7 @@ export async function triagePortfolio(): Promise<TriageResult> {
   async function dispatch(name: string, args: Record<string, unknown>): Promise<unknown> {
     if (name === "get_all_project_health") {
       allProjects = await getProjectHealth();
-      // Return compact overview — top 20 by risk
+      // Return compact overview - top 20 by risk
       return allProjects.slice(0, 20).map((p) => ({
         projectId: p.projectId,
         projectName: p.projectName,
@@ -198,7 +198,7 @@ export async function triagePortfolio(): Promise<TriageResult> {
           role: m.role,
           gapFTE: Math.abs(m.gap).toFixed(1),
         })),
-        note: `${matches.length} pipeline gap(s) found — redeploy opportunity.`,
+        note: `${matches.length} pipeline gap(s) found - redeploy opportunity.`,
       };
     }
 
@@ -270,7 +270,7 @@ export async function triagePortfolio(): Promise<TriageResult> {
       projectsNeedingAction: fallback.filter((i) =>
         ["CRITICAL", "HIGH"].includes(i.severity),
       ).length,
-      narrative: "AI triage unavailable — showing deterministic health flags.",
+      narrative: "AI triage unavailable - showing deterministic health flags.",
       trace: [],
     };
   }

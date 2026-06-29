@@ -87,8 +87,8 @@ export async function getProjectHealth(projectIds?: string[]): Promise<ProjectHe
       if (latest.team === "RED") ragFlags.push("TEAM_RED");
 
       if (isWorseningTrend(schedules)) factors.push("Schedule slippage over 2+ consecutive weeks");
-      if (isWorseningTrend(teams)) factors.push("Team health deteriorating — possible resourcing issue");
-      if (isWorseningTrend(csats)) factors.push("CSAT declining — client satisfaction at risk");
+      if (isWorseningTrend(teams)) factors.push("Team health deteriorating - possible resourcing issue");
+      if (isWorseningTrend(csats)) factors.push("CSAT declining - client satisfaction at risk");
     }
 
     const isOverrun = ragFlags.includes("SCHEDULE_RED") &&

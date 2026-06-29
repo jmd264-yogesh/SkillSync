@@ -1,4 +1,4 @@
-// No "use server" — called directly from the Server Component at /pitch
+// No "use server" - called directly from the Server Component at /pitch
 import { db } from "@/lib/db";
 import { getPipelineOutlook } from "@/server/services/forecast.service";
 import { getProjectHealth } from "@/server/services/health.service";
@@ -98,7 +98,7 @@ export async function getPitchStats(): Promise<PitchStats> {
     const confirmedRequests = pipelineRequestsRaw.filter((r) => r.sowSigned).length;
     const probableRequests = pipelineRequestsRaw.filter((r) => !r.sowSigned).length;
 
-    // Avg top match score — sample up to 3 confirmed pipeline requests
+    // Avg top match score - sample up to 3 confirmed pipeline requests
     let avgTopMatchScore: number | null = null;
     try {
       const sampleReqs = await db.pipelineRequest.findMany({

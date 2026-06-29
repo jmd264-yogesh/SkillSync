@@ -4,7 +4,7 @@ import type { ProjectHealthResult } from "@/server/services/health.service";
 const SYSTEM = `You are a delivery-assurance analyst.
 Given weekly RAG trends (scope/schedule/quality/csat/team) plus timesheet-derived billability leakage
 and shadow-resource counts, explain the likely ROOT CAUSE and ONE intervention for this week.
-Synthesize across signals — do not list them separately.
+Synthesize across signals - do not list them separately.
 3 sentences: (1) what's happening, (2) most likely why, (3) the intervention.
 Use only the provided data. Never invent numbers.`;
 

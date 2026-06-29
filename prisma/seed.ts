@@ -24,7 +24,27 @@ async function main() {
   }
   console.log("✓ Competency levels");
 
-  // ── 2. COEs ──────────────────────────────────────────────────────────────
+  // ── 2. Clusters ───────────────────────────────────────────────────────────
+  const clusterData = [
+    { name: "Cluster-1", description: "North region sales cluster" },
+    { name: "Cluster-2", description: "South region sales cluster" },
+    { name: "Cluster-3", description: "East region sales cluster" },
+    { name: "Cluster-4", description: "West region sales cluster" },
+    { name: "Cluster-5", description: "Strategic accounts cluster" },
+  ];
+
+  const clusters: Record<string, { id: string }> = {};
+  for (const cl of clusterData) {
+    const record = await prisma.cluster.upsert({
+      where: { name: cl.name },
+      update: { description: cl.description },
+      create: cl,
+    });
+    clusters[cl.name] = record;
+  }
+  console.log("✓ Clusters");
+
+  // ── 2.5 COEs ──────────────────────────────────────────────────────────────
   const coeData = [
     { name: "Full Stack", description: "Full Stack Web Development" },
     { name: "Backend", description: "Backend Engineering and APIs" },
@@ -199,6 +219,7 @@ async function main() {
       name: "System Admin",
       coeId: coes["Full Stack"]?.id ?? null,
       designationId: designations["Lead Engineer"]?.id ?? null,
+      clusterId: clusters["Cluster-5"]?.id ?? null,
     },
     create: {
       employeeCode: "ADM001",
@@ -206,6 +227,7 @@ async function main() {
       email: "admin@skillmatrix.com",
       coeId: coes["Full Stack"]?.id ?? null,
       designationId: designations["Lead Engineer"]?.id ?? null,
+      clusterId: clusters["Cluster-5"]?.id ?? null,
     },
   });
 
@@ -252,16 +274,16 @@ async function main() {
   // ── 8. Managers ───────────────────────────────────────────────────────────
   const managerPassword = await bcrypt.hash("manager123", 12);
   const managersInput = [
-    { code: "MGR001", name: "Sarah Jenkins", email: "manager.fullstack@skillmatrix.com", coeName: "Full Stack", designationName: "Lead Engineer" },
-    { code: "MGR002", name: "Michael Vance", email: "manager.devops@skillmatrix.com", coeName: "DevOps", designationName: "Architect" },
+    { code: "MGR001", name: "Sarah Jenkins", email: "manager.fullstack@skillmatrix.com", coeName: "Full Stack", designationName: "Lead Engineer", clusterName: "Cluster-1" },
+    { code: "MGR002", name: "Michael Vance", email: "manager.devops@skillmatrix.com", coeName: "DevOps", designationName: "Architect", clusterName: "Cluster-3" },
   ];
 
   const managerRecords: Record<string, { id: string }> = {};
   for (const mgr of managersInput) {
     const employee = await prisma.employee.upsert({
       where: { employeeCode: mgr.code },
-      update: { name: mgr.name, coeId: coes[mgr.coeName]?.id ?? null, designationId: designations[mgr.designationName]?.id ?? null },
-      create: { employeeCode: mgr.code, name: mgr.name, email: mgr.email, coeId: coes[mgr.coeName]?.id ?? null, designationId: designations[mgr.designationName]?.id ?? null },
+      update: { name: mgr.name, coeId: coes[mgr.coeName]?.id ?? null, designationId: designations[mgr.designationName]?.id ?? null, clusterId: clusters[mgr.clusterName]?.id ?? null },
+      create: { employeeCode: mgr.code, name: mgr.name, email: mgr.email, coeId: coes[mgr.coeName]?.id ?? null, designationId: designations[mgr.designationName]?.id ?? null, clusterId: clusters[mgr.clusterName]?.id ?? null },
     });
     await prisma.user.upsert({
       where: { email: mgr.email },
@@ -275,13 +297,13 @@ async function main() {
   // ── 9. Employees ──────────────────────────────────────────────────────────
   const employeePassword = await bcrypt.hash("employee123", 12);
   const employeesInput = [
-    { code: "EMP001", name: "Alice Chen", email: "alice.fullstack@skillmatrix.com", coeName: "Full Stack", designationName: "Software Engineer", managerName: "Sarah Jenkins" },
-    { code: "EMP002", name: "Bob Miller", email: "bob.backend@skillmatrix.com", coeName: "Backend", designationName: "Senior Software Engineer", managerName: "Sarah Jenkins" },
-    { code: "EMP003", name: "Carol White", email: "carol.frontend@skillmatrix.com", coeName: "Frontend", designationName: "Software Engineer", managerName: "Sarah Jenkins" },
-    { code: "EMP004", name: "Dave Clark", email: "dave.devops@skillmatrix.com", coeName: "DevOps", designationName: "Senior Software Engineer", managerName: "Michael Vance" },
-    { code: "EMP005", name: "Eve Adams", email: "eve.data@skillmatrix.com", coeName: "Data Engineering", designationName: "Software Engineer", managerName: "Michael Vance" },
-    { code: "EMP006", name: "Frank Miller", email: "frank.frontend@skillmatrix.com", coeName: "Frontend", designationName: "Senior Software Engineer", managerName: "Sarah Jenkins" },
-    { code: "EMP007", name: "Grace Hopper", email: "grace.backend@skillmatrix.com", coeName: "Backend", designationName: "Principal Engineer", managerName: "Sarah Jenkins" },
+    { code: "EMP001", name: "Alice Chen", email: "alice.fullstack@skillmatrix.com", coeName: "Full Stack", designationName: "Software Engineer", managerName: "Sarah Jenkins", clusterName: "Cluster-1" },
+    { code: "EMP002", name: "Bob Miller", email: "bob.backend@skillmatrix.com", coeName: "Backend", designationName: "Senior Software Engineer", managerName: "Sarah Jenkins", clusterName: "Cluster-1" },
+    { code: "EMP003", name: "Carol White", email: "carol.frontend@skillmatrix.com", coeName: "Frontend", designationName: "Software Engineer", managerName: "Sarah Jenkins", clusterName: "Cluster-2" },
+    { code: "EMP004", name: "Dave Clark", email: "dave.devops@skillmatrix.com", coeName: "DevOps", designationName: "Senior Software Engineer", managerName: "Michael Vance", clusterName: "Cluster-3" },
+    { code: "EMP005", name: "Eve Adams", email: "eve.data@skillmatrix.com", coeName: "Data Engineering", designationName: "Software Engineer", managerName: "Michael Vance", clusterName: "Cluster-3" },
+    { code: "EMP006", name: "Frank Miller", email: "frank.frontend@skillmatrix.com", coeName: "Frontend", designationName: "Senior Software Engineer", managerName: "Sarah Jenkins", clusterName: "Cluster-2" },
+    { code: "EMP007", name: "Grace Hopper", email: "grace.backend@skillmatrix.com", coeName: "Backend", designationName: "Principal Engineer", managerName: "Sarah Jenkins", clusterName: "Cluster-5" },
   ];
 
   const employeeRecords: Record<string, { id: string }> = {};
@@ -293,6 +315,7 @@ async function main() {
         coeId: coes[emp.coeName]?.id ?? null,
         designationId: designations[emp.designationName]?.id ?? null,
         managerId: managerRecords[emp.managerName]?.id ?? null,
+        clusterId: clusters[emp.clusterName]?.id ?? null,
       },
       create: {
         employeeCode: emp.code,
@@ -301,6 +324,7 @@ async function main() {
         coeId: coes[emp.coeName]?.id ?? null,
         designationId: designations[emp.designationName]?.id ?? null,
         managerId: managerRecords[emp.managerName]?.id ?? null,
+        clusterId: clusters[emp.clusterName]?.id ?? null,
       },
     });
     await prisma.user.upsert({

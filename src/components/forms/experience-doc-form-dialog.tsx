@@ -25,7 +25,7 @@ export function ExperienceDocFormDialog({ open, onOpenChange }: ExperienceDocFor
     const result = await createExperienceDoc(formData);
     setLoading(false);
     if ("error" in result && result.error) { toast.error(result.error); return; }
-    toast.success("Project experience saved — click Extract Skills to analyse it");
+    toast.success("Project experience saved - click Extract Skills to analyse it");
     onOpenChange(false);
   }
 
@@ -56,7 +56,7 @@ export function ExperienceDocFormDialog({ open, onOpenChange }: ExperienceDocFor
             <div className="space-y-2">
               <Label className="font-semibold">Project Type <span className="text-red-500">*</span></Label>
               <select name="projectType" className="select-field" required defaultValue="">
-                <option value="" disabled>— Select type —</option>
+                <option value="" disabled>- Select type -</option>
                 {PROJECT_TYPES.map((t) => (
                   <option key={t} value={t}>{PROJECT_TYPE_LABELS[t]}</option>
                 ))}

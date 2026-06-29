@@ -205,7 +205,7 @@ export function ApprovalsClient({ submissions }: { submissions: Submission[] }) 
                   <select name="validatedLevel" required className="select-field">
                     {[1, 2, 3, 4, 5].map((l) => (
                       <option key={l} value={l} selected={l === actionDialog.submission.selfAssessedLevel}>
-                        {l} — {COMPETENCY_LABEL[l as CompetencyLevel]}
+                        {l} - {COMPETENCY_LABEL[l as CompetencyLevel]}
                       </option>
                     ))}
                   </select>

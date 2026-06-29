@@ -98,7 +98,7 @@ export const COPILOT_TOOLS: Tool[] = [
       {
         name: "get_pipeline_forecast",
         description:
-          "Get 6-month pipeline forecast by cluster — demand vs supply, first shortfall month, confirmed vs probable breakdown.",
+          "Get 6-month pipeline forecast by cluster - demand vs supply, first shortfall month, confirmed vs probable breakdown.",
         parameters: {
           type: SchemaType.OBJECT,
           properties: {
@@ -116,7 +116,7 @@ export const COPILOT_TOOLS: Tool[] = [
       {
         name: "get_project_health",
         description:
-          "Get health radar for active projects — RAG signals, billability leakage, shadow resources, releasable FTE.",
+          "Get health radar for active projects - RAG signals, billability leakage, shadow resources, releasable FTE.",
         parameters: {
           type: SchemaType.OBJECT,
           properties: {
@@ -131,7 +131,7 @@ export const COPILOT_TOOLS: Tool[] = [
       {
         name: "get_allocation_report",
         description:
-          "Get real utilisation and availability for employees — planned vs actual utilisation, billable%, status (OVER/FULL/UNDER/BENCH).",
+          "Get real utilisation and availability for employees - planned vs actual utilisation, billable%, status (OVER/FULL/UNDER/BENCH).",
         parameters: {
           type: SchemaType.OBJECT,
           properties: {

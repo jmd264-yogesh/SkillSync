@@ -130,8 +130,8 @@ export function AllocationTableClient({ rows }: AllocationTableClientProps) {
                     <td className="px-4 py-2.5">
                       <span className="font-medium text-slate-800 text-xs font-mono">{row.employeeCode}</span>
                     </td>
-                    <td className="px-4 py-2.5 text-slate-600 text-sm">{row.jobName ?? "—"}</td>
-                    <td className="px-4 py-2.5 text-slate-600 text-sm">{row.coe ?? "—"}</td>
+                    <td className="px-4 py-2.5 text-slate-600 text-sm">{row.jobName ?? "-"}</td>
+                    <td className="px-4 py-2.5 text-slate-600 text-sm">{row.coe ?? "-"}</td>
                     <td className="px-4 py-2.5">
                       <span className="text-slate-700 text-sm">{row.activeProjectCount}</span>
                     </td>

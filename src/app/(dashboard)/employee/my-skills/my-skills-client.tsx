@@ -304,7 +304,7 @@ export function MySkillsClient({
         </>
       )}
 
-      {/* Expected Skills — two tabs */}
+      {/* Expected Skills - two tabs */}
       {targetSkills.length > 0 && (
         <div className="mt-10">
           <div className="flex items-center justify-between mb-4">
@@ -379,7 +379,7 @@ export function MySkillsClient({
             <div className="space-y-2">
               <Label className="font-semibold">Skill</Label>
               <select name="skillId" required className="select-field">
-                <option value="">— Select a skill —</option>
+                <option value="">- Select a skill -</option>
                 {availableSkills.map((s) => (
                   <option key={s.id} value={s.id}>{s.name} ({s.category})</option>
                 ))}
@@ -389,7 +389,7 @@ export function MySkillsClient({
               <Label className="font-semibold">Self-Assessed Level</Label>
               <select name="selfAssessedLevel" required className="select-field">
                 {[1, 2, 3, 4, 5].map((l) => (
-                  <option key={l} value={l}>{l} — {COMPETENCY_LABEL[l as CompetencyLevel]}</option>
+                  <option key={l} value={l}>{l} - {COMPETENCY_LABEL[l as CompetencyLevel]}</option>
                 ))}
               </select>
             </div>
@@ -399,7 +399,7 @@ export function MySkillsClient({
                 <div className="space-y-1.5">
                   <Label className="text-xs">Type</Label>
                   <select name="evidenceType" className="select-field">
-                    <option value="">— None —</option>
+                    <option value="">- None -</option>
                     <option value="CERTIFICATION">Certification</option>
                     <option value="ASSESSMENT_SCORE">Assessment Score</option>
                     <option value="PROJECT_DOCUMENT">Project Document</option>

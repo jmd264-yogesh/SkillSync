@@ -94,6 +94,8 @@ model Employee {
   manager         Employee?       @relation("ManagerReports", fields: [managerId], references: [id])
   managerId       String?         @map("manager_id")
   reportees       Employee[]      @relation("ManagerReports")
+  cluster         Cluster?        @relation(fields: [clusterId], references: [id])
+  clusterId       String?         @map("cluster_id")
   employeeSkills  EmployeeSkill[]
   evidences       Evidence[]
   allocations          ProjectAllocation[]
@@ -110,8 +112,21 @@ model Employee {
   createdAt            DateTime                 @default(now()) @map("created_at")
   updatedAt            DateTime                 @updatedAt @map("updated_at")
 
+  @@index([clusterId])
   @@map("employees")
 }
+
+model Cluster {
+  id          String     @id @default(uuid())
+  name        String     @unique
+  description String?
+  employees   Employee[]
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  @@map("clusters")
+}
+
 
 // ─── Skills ──────────────────────────────────────────────────
 
