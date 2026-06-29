@@ -132,6 +132,16 @@ export const SOLUTION_PRIORITY: Record<string, number> = {
 
 export const SOLUTION_TYPES = Object.keys(SOLUTION_PRIORITY) as string[];
 
+// Human-readable labels for project type dropdowns (overrides where a longer description helps)
+const SOLUTION_TYPE_LABELS: Record<string, string> = {
+  "Full Stack": "Full Stack — Application Build / Support",
+  "Design & Discovery": "Design & Discovery",
+};
+
+// Shared project type list used by all propositions
+export const PROPOSITION_PROJECT_OPTIONS: Array<{ value: string; label: string }> =
+  SOLUTION_TYPES.map((s) => ({ value: s, label: SOLUTION_TYPE_LABELS[s] ?? s }));
+
 export const SERVICE_LINES = [
   "Due Diligence",
   "Data Advisory",
@@ -188,37 +198,12 @@ export const SOURCE_SYSTEMS = [
 export type SourceSystem = (typeof SOURCE_SYSTEMS)[number];
 
 export const PROPOSITION_PROJECT_TYPES: Record<ServiceLine, Array<{ value: string; label: string }>> = {
-  "Due Diligence": [
-    { value: "D_AND_D", label: "Discovery & Design" },
-    { value: "DATA_PLATFORM_BUILD", label: "Data Platform Build" },
-    { value: "TACTICAL_BUILD", label: "Tactical Build" },
-  ],
-  "Data Advisory": [
-    { value: "DATA_SCIENCE", label: "Data Science" },
-    { value: "AI_PROJECT", label: "AI Project" },
-    { value: "TACTICAL_BUILD", label: "Tactical Build" },
-    { value: "OTHER", label: "Other" },
-  ],
-  "Core Reporting": [
-    { value: "TACTICAL_BUILD", label: "Tactical Build" },
-    { value: "ENTERPRISE_BUILD", label: "Enterprise Build" },
-    { value: "FULL_STACK", label: "Full Stack" },
-  ],
-  "Value Creation": [
-    { value: "VALUE_CREATION", label: "Value Creation" },
-    { value: "DATA_SCIENCE", label: "Data Science" },
-    { value: "AI_PROJECT", label: "AI Project" },
-  ],
-  "Exit Support": [
-    { value: "D_AND_D", label: "Discovery & Design" },
-    { value: "FULL_STACK", label: "Full Stack" },
-    { value: "DATA_PLATFORM_BUILD", label: "Data Platform Build" },
-  ],
-  "Managed Service": [
-    { value: "MS_PROJECT", label: "MS Project" },
-    { value: "ENTERPRISE_BUILD", label: "Enterprise Build" },
-    { value: "OTHER", label: "Other" },
-  ],
+  "Due Diligence":  PROPOSITION_PROJECT_OPTIONS,
+  "Data Advisory":  PROPOSITION_PROJECT_OPTIONS,
+  "Core Reporting": PROPOSITION_PROJECT_OPTIONS,
+  "Value Creation": PROPOSITION_PROJECT_OPTIONS,
+  "Exit Support":   PROPOSITION_PROJECT_OPTIONS,
+  "Managed Service":PROPOSITION_PROJECT_OPTIONS,
 };
 
 export const CLIENT_TIER_BOOST: Record<string, number> = {
