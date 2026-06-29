@@ -10,7 +10,8 @@ export type RiskFlag =
   | "SKILL_GAP_FOR_ROLE"
   | "ON_LEAVE"
   | "UNDER_LEVELLED"
-  | "LOW_EXPERIENCE";
+  | "LOW_EXPERIENCE"
+  | "UNDER_UTILIZED";
 
 export interface SkillBreakdown {
   skillName: string;
@@ -63,9 +64,10 @@ export async function computeMatchRanking(params: {
   const hasRoleFilter = canonicalRoles && canonicalRoles.length > 0;
   const skillIds = requiredSkills.map((s) => s.skillId);
 
+  const jobNameValid = { jobName: { not: null, notIn: ["NULL", "null", "Null", ""] } };
   const roleWhere = hasRoleFilter
-    ? { OR: canonicalRoles!.map((r) => ({ jobName: { contains: r } })) }
-    : {};
+    ? { AND: [{ OR: canonicalRoles!.map((r) => ({ jobName: { contains: r } })) }, jobNameValid] }
+    : jobNameValid;
 
   const now = new Date();
   const leaveHorizon = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
@@ -147,7 +149,16 @@ export async function computeMatchRanking(params: {
     const avgUtil = snapshots.length > 0
       ? snapshots.reduce((s, sn) => s + sn.utilisation, 0) / snapshots.length
       : (activeAllocations.length > 0 ? 1.0 : 0);
-    const availableFTE = Math.max(0, 1 - avgUtil);
+
+    // Under-utilization: nominal allocation % vs actual logged hours.
+    // If logging < 70% of nominal allocation → has hidden spare capacity.
+    const nominalAllocPct = Math.min(
+      1,
+      activeAllocations.reduce((sum, a) => sum + a.allocation, 0) / 100,
+    );
+    const underUtilized = snapshots.length >= 2 && nominalAllocPct > 0.1 && avgUtil < nominalAllocPct * 0.7;
+    const spareCapacity = underUtilized ? Math.max(0, nominalAllocPct - avgUtil) : 0;
+    const availableFTE = Math.min(1, Math.max(0, 1 - avgUtil) + spareCapacity);
     const availabilityFit = Math.round(Math.min(availableFTE, 1) * 100);
 
     // ── Billability Fit ──────────────────────────────────────
@@ -242,6 +253,8 @@ export async function computeMatchRanking(params: {
     // Low experience: no ExperienceDocs with meaningful skill data
     const hasExpData = emp.experienceDocs.some((d) => d.extractedSkills && d.extractedSkills !== "[]");
     if (!hasExpData && emp.employeeSkills.length === 0) riskFlags.push("LOW_EXPERIENCE");
+    // Under-utilized: logging significantly fewer hours than nominal allocation
+    if (underUtilized) riskFlags.push("UNDER_UTILIZED");
 
     return {
       employeeId: emp.id,

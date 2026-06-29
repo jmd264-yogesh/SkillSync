@@ -24,6 +24,7 @@ const RISK_CONFIG: Record<RiskFlag, { label: string; color: string }> = {
   ON_LEAVE:           { label: "Planned Leave",     color: "bg-blue-50 text-blue-700 border-blue-200" },
   UNDER_LEVELLED:     { label: "Under-Levelled",    color: "bg-purple-50 text-purple-700 border-purple-200" },
   LOW_EXPERIENCE:     { label: "Low Experience",    color: "bg-slate-50 text-slate-700 border-slate-200" },
+  UNDER_UTILIZED:     { label: "Under-Utilised",    color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
 };
 
 const SIGNAL_CONFIG = {
@@ -356,7 +357,7 @@ export function MatchClient({ pipelineRequests }: MatchClientProps) {
             {/* Risk summary pills */}
             {results.some((r) => r.riskFlags.length > 0) && (
               <div className="flex flex-wrap gap-1.5">
-                {(["LEAVER","OVER_ALLOCATED","GHOST","ON_LEAVE","SKILL_GAP_FOR_ROLE","UNDER_LEVELLED","LOW_EXPERIENCE"] as RiskFlag[]).map((flag) => {
+                {(["LEAVER","OVER_ALLOCATED","GHOST","ON_LEAVE","SKILL_GAP_FOR_ROLE","UNDER_LEVELLED","LOW_EXPERIENCE","UNDER_UTILIZED"] as RiskFlag[]).map((flag) => {
                   const count = results.filter((r) => r.riskFlags.includes(flag)).length;
                   if (count === 0) return null;
                   return (

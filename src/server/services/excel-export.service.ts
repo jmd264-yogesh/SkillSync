@@ -156,6 +156,15 @@ function parseDealStageConversion(raw: unknown): { pct: number; label: string } 
   return { pct, label };
 }
 
+/** Parse the pipeline "%" column into a 0–1 fraction. Defaults to 1.0 (100%) if blank. */
+function parseRequiredAllocationPct(raw: unknown): number {
+  if (raw === null || raw === undefined || String(raw).trim() === "") return 1.0;
+  const str = String(raw).trim().replace("%", "").replace(",", ".");
+  const num = parseFloat(str);
+  if (isNaN(num)) return 1.0;
+  return num > 1 ? num / 100 : num; // handle both "80" and "0.80"
+}
+
 // ── Role → seniority level (1-8) for designation gap calculation ──────────────
 const ROLE_SENIORITY: Record<string, number> = {
   "analyst": 1,
@@ -177,6 +186,8 @@ const ROLE_SENIORITY: Record<string, number> = {
   "senior solutions consultant": 4,
   "solution architect": 5,
   "principal": 5,
+  "principal architect": 6,
+  "principal technology architect": 6,
   "senior solution architect": 6,
   "associate partner": 6,
   "partner": 7,
@@ -457,58 +468,78 @@ function computeExperienceScore(
 }
 
 // ── Skill → COE domain mapping ────────────────────────────────────────────────
-// Used to derive the COE domain the REQUEST actually needs (from its skillset),
-// rather than relying on the solution column label or the employee's own COE.
-// Each entry: [lowercase keyword, coe name that owns this skill domain].
+// Maps skillset keywords and solution types to the exact company team names.
+// Company teams: Data Engineering | BI and Reporting | Data Science & ML |
+//                Full Stack Engineering | TechOps and Automation | Consulting
+// Each entry: [lowercase keyword, exact team name (case-insensitive match)].
 const SKILL_COE_DOMAIN: Array<[string, string]> = [
-  // Data Engineering — specific first
+  // ── Data Engineering ───────────────────────────────────────────────────────
   ["pyspark",             "data engineering"],
   ["snowflake",           "data engineering"],
   ["airflow",             "data engineering"],
   ["kafka",               "data engineering"],
   ["dbt",                 "data engineering"],
-  ["scd",                 "data engineering"],   // Slowly Changing Dimensions
+  ["scd",                 "data engineering"],
   ["etl",                 "data engineering"],
   ["data pipeline",       "data engineering"],
   ["data model",          "data engineering"],
   ["data warehouse",      "data engineering"],
+  ["data lake",           "data engineering"],
+  ["databricks",          "data engineering"],
   ["anomaly detection",   "data engineering"],
   ["ltv",                 "data engineering"],
-  // DevOps
-  ["kubernetes",          "devops"],
-  ["docker",              "devops"],
-  ["terraform",           "devops"],
-  ["jenkins",             "devops"],
-  ["helm",                "devops"],
-  ["ansible",             "devops"],
-  ["ci/cd",               "devops"],
-  ["deployment troubleshooting", "devops"],
-  // Frontend
-  ["shadcn",              "frontend"],
-  ["tailwind",            "frontend"],
-  ["vue",                 "frontend"],
-  ["angular",             "frontend"],
-  ["css",                 "frontend"],
-  ["html",                "frontend"],
-  // Full Stack / Backend (web/API skills)
-  ["express",             "full stack"],
-  ["graphql",             "full stack"],
-  ["oauth",               "full stack"],
-  ["branching",           "full stack"],
-  ["node.js",             "full stack"],
-  ["playwright",          "full stack"],
-  ["selenium",            "full stack"],
-  ["scrapy",              "full stack"],   // web scraping is a full-stack activity
-  ["react",               "full stack"],
-  ["javascript",          "full stack"],
-  ["typescript",          "full stack"],
-  ["commits",             "full stack"],
-  ["diffs",               "full stack"],
-  ["rest api",            "full stack"],
-  ["microservices",       "backend"],
-  ["spring",              "backend"],
-  ["django",              "backend"],
-  ["fastapi",             "backend"],
+  // ── BI and Reporting ───────────────────────────────────────────────────────
+  ["power bi",            "bi and reporting"],
+  ["tableau",             "bi and reporting"],
+  ["looker",              "bi and reporting"],
+  ["qlik",                "bi and reporting"],
+  ["ssrs",                "bi and reporting"],
+  ["dashboard",           "bi and reporting"],
+  ["data visuali",        "bi and reporting"],
+  // ── Data Science & ML ─────────────────────────────────────────────────────
+  ["machine learning",    "data science & ml"],
+  ["scikit",              "data science & ml"],
+  ["tensorflow",          "data science & ml"],
+  ["pytorch",             "data science & ml"],
+  ["nlp",                 "data science & ml"],
+  ["data science",        "data science & ml"],
+  ["predictive model",    "data science & ml"],
+  // ── TechOps and Automation ────────────────────────────────────────────────
+  ["kubernetes",          "techops and automation"],
+  ["docker",              "techops and automation"],
+  ["terraform",           "techops and automation"],
+  ["jenkins",             "techops and automation"],
+  ["helm",                "techops and automation"],
+  ["ansible",             "techops and automation"],
+  ["ci/cd",               "techops and automation"],
+  ["devops",              "techops and automation"],
+  // ── Full Stack Engineering ────────────────────────────────────────────────
+  ["react",               "full stack engineering"],
+  ["node.js",             "full stack engineering"],
+  ["express",             "full stack engineering"],
+  ["graphql",             "full stack engineering"],
+  ["typescript",          "full stack engineering"],
+  ["javascript",          "full stack engineering"],
+  ["rest api",            "full stack engineering"],
+  ["microservices",       "full stack engineering"],
+  ["vue",                 "full stack engineering"],
+  ["angular",             "full stack engineering"],
+  ["spring",              "full stack engineering"],
+  ["django",              "full stack engineering"],
+  ["fastapi",             "full stack engineering"],
+  ["playwright",          "full stack engineering"],
+  ["selenium",            "full stack engineering"],
+  ["tailwind",            "full stack engineering"],
+  // ── Solution types (pipeline "Solution" column) ───────────────────────────
+  // "Data Advisory" is a data-platform concern → Data Engineering.
+  // "Core Reporting" spans two teams: data platform setup (Data Engineering) +
+  //   cube creation & report delivery (BI and Reporting).
+  //   Both get one vote; skillset keywords (e.g. Power BI vs Snowflake) break the tie.
+  // "Due Diligence", "Value Creation", "Exit Support", "Managed Service" are
+  //   deliberately left unmapped — any team may be involved.
+  ["data advisory",       "data engineering"],
+  ["core reporting",      "data engineering"],
+  ["core reporting",      "bi and reporting"],
 ];
 
 /** Returns the most-voted COE domain for this request based on skillset keywords. */
@@ -522,6 +553,32 @@ function deriveRequestCoeDomain(skillset: string | null, solution: string | null
   }
   if (Object.keys(votes).length === 0) return null;
   return Object.entries(votes).sort((a, b) => b[1] - a[1])[0]![0]!;
+}
+
+// ── Role adjacency for cross-role cascade ─────────────────────────────────────
+// Tech executor family (SE / SSE / Enabler) can act in adjacent roles when the
+// exact-role pool is exhausted — internal redeployment always beats external hire.
+const ROLE_ADJACENCY: Record<string, string[]> = {
+  "senior software engineer": ["software engineer", "solutions enabler"],
+  "software engineer":        ["senior software engineer", "solutions enabler"],
+  "solutions enabler":        ["senior software engineer", "software engineer"],
+};
+
+function getAdjacentRoles(canonicalRoles: string[]): string[] {
+  const lowerRoles = canonicalRoles.map((r) => r.toLowerCase());
+  const adj = new Set<string>();
+  for (const role of lowerRoles) {
+    for (const a of ROLE_ADJACENCY[role] ?? []) {
+      if (!lowerRoles.includes(a)) adj.add(a);
+    }
+  }
+  return [...adj];
+}
+
+function coeDomainMatches(emp: EmployeeRow, requestedDomain: string | null): boolean {
+  if (!requestedDomain) return true; // no domain derivable → don't penalise any COE
+  const empCoe = emp.coe?.name?.toLowerCase().trim();
+  return empCoe === requestedDomain.toLowerCase();
 }
 
 // ── COE alignment ─────────────────────────────────────────────────────────────
@@ -600,12 +657,14 @@ function computeRiskFlags(
   emp: EmployeeRow,
   designationGap: number,
   avgUtil: number,
+  underUtilized: boolean,
 ): RiskFlag[] {
   const flags: RiskFlag[] = [];
   if (isLeavingSoon(emp)) flags.push("LEAVER");
   if (emp.shadowFlags.some((f) => f.flagType === "GHOST"))   flags.push("GHOST");
   if (avgUtil > 1.0)       flags.push("OVER_ALLOCATED");
   if (designationGap <= -2) flags.push("UNDER_LEVELLED");
+  if (underUtilized)       flags.push("UNDER_UTILIZED");
   return flags;
 }
 
@@ -703,13 +762,23 @@ function scoreEmployee(
     ? windowFreeCapacity
     : Math.max(0, 1 - avgUtil);
 
+  // Under-utilization: if actual logged hours are significantly below nominal allocation,
+  // the employee has hidden spare capacity we should surface.
+  const nominalAllocPct = Math.min(
+    1,
+    activeAllocations.reduce((sum, a) => sum + a.allocation, 0) / 100,
+  );
+  const underUtilized = snapshots.length >= 2 && nominalAllocPct > 0.1 && avgUtil < nominalAllocPct * 0.7;
+  const spareCapacity = underUtilized ? Math.max(0, nominalAllocPct - avgUtil) : 0;
+  const trueAvailableFTE = Math.min(1, effectiveFreeCapacity + spareCapacity);
+
   // Rolling-off bonus: employee's commitments end right at the start of the window
-  let availabilityFit = Math.round(Math.min(effectiveFreeCapacity, 1) * 100);
+  let availabilityFit = Math.round(Math.min(trueAvailableFTE, 1) * 100);
   if (isRollingOff && availabilityFit < 100) {
     availabilityFit = Math.min(100, availabilityFit + ROLLING_OFF_BONUS_PTS);
   }
 
-  const availableFTE = effectiveFreeCapacity;
+  const availableFTE = trueAvailableFTE;
 
   // ── Billability Fit ────────────────────────────────────────────────────────
   const avgBillable =
@@ -772,7 +841,7 @@ function scoreEmployee(
 
   // ── Designation gap & Risk Flags ───────────────────────────────────────────
   const designationGap = computeDesignationGap(emp, canonicalRoles);
-  const riskFlags = computeRiskFlags(emp, designationGap, avgUtil);
+  const riskFlags = computeRiskFlags(emp, designationGap, avgUtil, underUtilized);
 
   // Apply penalties for identified risks
   // Under-levelled by ≥2 grades: reduce skill score
@@ -934,15 +1003,34 @@ function toAction(
   fallbackUsed: boolean,
   poolExhausted: boolean,
   conversionPct: number,
+  crossCoe: boolean,
+  actingRole: string | null,
+  reqAllocationPct: number,
 ): string {
-  const availPct = Math.round(match.availableFTE * 100);
-  const tier     = availabilityTier(match.availableFTE);
+  const availPct   = Math.round(match.availableFTE * 100);
+  const neededPct  = Math.round(reqAllocationPct * 100);
+  const partialFit = neededPct > 0 && match.availableFTE < reqAllocationPct;
+  const allocNote  = partialFit ? ` (${neededPct}% needed — partial fit)` : "";
+  const tier       = availabilityTier(match.availableFTE);
   const roleTag  = roleFiltered
     ? ` [${parsed.display}]`
     : fallbackUsed
     ? " [role unrecognised - any grade]"
     : "";
-  const riskNote   = match.riskFlags.length > 0 ? ` ⚠ ${match.riskFlags.join(", ")}` : "";
+  // Cross-mapping annotations
+  const crossCoeTag  = crossCoe
+    ? ` ⟡ Cross-COE [${match.empCoeName ?? "other COE"}]`
+    : "";
+  const actingTag = actingRole && actingRole !== "grade-fallback"
+    ? ` ⟡ ${match.jobName ?? "adjacent role"} acting as ${parsed.display}`
+    : actingRole === "grade-fallback"
+    ? " [grade fallback]"
+    : "";
+  const underUtilTag = match.riskFlags.includes("UNDER_UTILIZED")
+    ? " ↑ under-utilised (spare capacity)"
+    : "";
+  const visibleRisks = match.riskFlags.filter((f) => f !== "UNDER_UTILIZED");
+  const riskNote   = visibleRisks.length > 0 ? ` ⚠ ${visibleRisks.join(", ")}` : "";
   const sharedNote = poolExhausted ? " (shared - pool exhausted)" : "";
   const coeTag     = match.coeAligned ? ` ✓ COE:${match.requestedDomain ?? match.empCoeName ?? ""}` : "";
   const rollingTag = match.isRollingOff ? " (rolling off - natural window)" : "";
@@ -952,25 +1040,25 @@ function toAction(
   if (conversionPct < 0.60) {
     const stagePct  = Math.round(conversionPct * 100);
     const stageVerb = conversionPct <= 0.40 ? "Pre-identified" : "Soft-reserved";
-    return `${stageVerb} (${stagePct}% deal confidence)${roleTag} — ${match.name}, not yet committed${riskNote}`;
+    return `${stageVerb} (${stagePct}% deal confidence)${roleTag}${crossCoeTag}${actingTag} — ${match.name}, not yet committed${riskNote}`;
   }
 
   if (match.signal === "HIRE") {
     return `Hire externally${roleTag} - no suitable internal candidate${riskNote}`;
   }
   if (match.isRollingOff) {
-    return `Rolling off${roleTag} - ${match.name} naturally free at window start${coeTag}${riskNote}${sharedNote}`;
+    return `Rolling off${roleTag}${crossCoeTag}${actingTag} - ${match.name} naturally free at window start${coeTag}${riskNote}${sharedNote}`;
   }
   if (tier === 3) {
-    return `Redeploy ${match.name}${roleTag} - ${availPct}% free now${coeTag}${riskNote}${sharedNote}`;
+    return `Redeploy ${match.name}${roleTag}${crossCoeTag}${actingTag} - ${availPct}% free now${allocNote}${coeTag}${underUtilTag}${riskNote}${sharedNote}`;
   }
   if (tier === 2) {
-    return `Redeploy ${match.name}${roleTag} - ${availPct}% free, coordinate handoff${coeTag}${riskNote}${sharedNote}`;
+    return `Redeploy ${match.name}${roleTag}${crossCoeTag}${actingTag} - ${availPct}% free, coordinate handoff${allocNote}${coeTag}${underUtilTag}${riskNote}${sharedNote}`;
   }
   if (tier === 1) {
-    return `Redeploy ${match.name}${roleTag} - ${availPct}% free, confirm commitment${coeTag}${rollingTag}${riskNote}${sharedNote}`;
+    return `Redeploy ${match.name}${roleTag}${crossCoeTag}${actingTag} - ${availPct}% free, confirm commitment${allocNote}${coeTag}${rollingTag}${underUtilTag}${riskNote}${sharedNote}`;
   }
-  return `${match.name}${roleTag} - currently allocated (${availPct}% free), release required${coeTag}${riskNote}${sharedNote}`;
+  return `${match.name}${roleTag}${crossCoeTag}${actingTag} - currently allocated (${availPct}% free)${allocNote}, release required${coeTag}${underUtilTag}${riskNote}${sharedNote}`;
 }
 
 function toPlan(
@@ -984,14 +1072,21 @@ function toPlan(
   isRollingOff: boolean,
   coeAligned: boolean,
   conversionPct: number,
+  crossCoe: boolean,
+  actingRole: string | null,
+  reqAllocationPct: number,
+  availableFTE: number,
 ): string {
+  const partialAlloc = reqAllocationPct > 0 && availableFTE < reqAllocationPct;
   const stagePct = Math.round(conversionPct * 100);
   const stageTag = `Stage-${stagePct}%`;
   if (signal === "HIRE" && conversionPct >= 0.60) return `${stageTag} · External Hire Required`;
   if (conversionPct < 0.60) {
     const commitment = conversionPct <= 0.40 ? "Pre-Pipeline" : "Soft-Reserved";
-    const roleTag = roleFiltered ? "Role-Matched" : fallbackUsed ? "Grade-Fallback" : "No-Role-Filter";
-    return [stageTag, commitment, roleTag].filter(Boolean).join(" · ");
+    const roleTag    = roleFiltered ? "Role-Matched" : fallbackUsed ? "Grade-Fallback" : "No-Role-Filter";
+    const crossTag   = crossCoe ? "Cross-COE" : "";
+    const adjTag     = actingRole && actingRole !== "grade-fallback" ? "Acting-Role" : "";
+    return [stageTag, commitment, roleTag, crossTag, adjTag].filter(Boolean).join(" · ");
   }
   const prioTag = priorityLabel
     ? `Priority-${priorityLabel}`
@@ -1007,10 +1102,15 @@ function toPlan(
     : tier === 1
     ? "Marginal"
     : "Allocated";
-  const roleTag  = roleFiltered ? "Role-Matched" : fallbackUsed ? "Grade-Fallback" : "No-Role-Filter";
-  const coeTag   = coeAligned ? "COE-Aligned" : "";
-  const poolTag  = poolExhausted ? "Pool-Exhausted" : "";
-  return [stageTag, prioTag, availTag, roleTag, coeTag, poolTag].filter(Boolean).join(" · ");
+  const roleTag        = roleFiltered ? "Role-Matched" : fallbackUsed ? "Grade-Fallback" : "No-Role-Filter";
+  const coeTag         = coeAligned ? "COE-Aligned" : "";
+  const poolTag        = poolExhausted ? "Pool-Exhausted" : "";
+  const crossTag       = crossCoe ? "Cross-COE" : "";
+  const adjTag         = actingRole && actingRole !== "grade-fallback"
+    ? "Acting-Role"
+    : actingRole === "grade-fallback" ? "Grade-Fallback" : "";
+  const partialAllocTag = partialAlloc ? `Partial-Alloc(${Math.round(availableFTE * 100)}%/${Math.round(reqAllocationPct * 100)}%)` : "";
+  return [stageTag, prioTag, availTag, roleTag, coeTag, poolTag, crossTag, adjTag, partialAllocTag].filter(Boolean).join(" · ");
 }
 
 // ── Window-aware conflict tracking ────────────────────────────────────────────
@@ -1076,7 +1176,13 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
   ]);
 
   // Partition candidates: leavers are excluded from the active pool
-  const activeCandidates = allEmployees.filter((emp) => !isLeavingSoon(emp));
+  const activeCandidates = allEmployees.filter(
+    (emp) =>
+      !isLeavingSoon(emp) &&
+      emp.jobName !== null &&
+      emp.jobName.trim() !== "" &&
+      emp.jobName.trim().toLowerCase() !== "null",
+  );
   const leaverCount = allEmployees.length - activeCandidates.length;
 
   // ── Step 3: Build requestsWithContext - join DB rows to xlsx rows ───────────
@@ -1090,8 +1196,9 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
     windowEnd: Date;
     reqSkillset: string | null;
     reqSolution: string | null;
-    conversionPct: number;   // HubSpot deal stage → 0.20…1.00 (resource confirmability)
-    dealStageLabel: string;  // raw stage string for display
+    conversionPct: number;      // HubSpot deal stage → 0.20…1.00 (resource confirmability)
+    dealStageLabel: string;     // raw stage string for display
+    reqAllocationPct: number;   // pipeline "%" column → required resource allocation (0–1)
   }
 
   const requestsWithContext: RequestContext[] = [];
@@ -1109,6 +1216,7 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
     const { windowStart, windowEnd } = toWindow(req.likelyStart, req.numberOfWeeks);
 
     const { pct: conversionPct, label: dealStageLabel } = parseDealStageConversion(srcRow[C.DEAL_STAGE]);
+    const reqAllocationPct = parseRequiredAllocationPct(srcRow[C.PCT]);
 
     requestsWithContext.push({
       req,
@@ -1122,6 +1230,7 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
       reqSolution: req.solution,
       conversionPct,
       dealStageLabel,
+      reqAllocationPct,
     });
   }
 
@@ -1151,10 +1260,33 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
     roleFiltered: boolean;
     fallbackUsed: boolean;
     poolExhausted: boolean;
+    crossCoe: boolean;            // employee from different COE than request requires
+    actingRole: string | null;    // null = exact role; string = acting as this role label
     priorityLabel: string | null;
     conversionPct: number;        // deal stage confidence — drives claim gating + action text
+    reqAllocationPct: number;     // pipeline "%" column — required resource allocation (0–1)
   }
   const assignments = new Map<string, RowAssignment>();
+
+  // Sort scored pool: GHOST last, HIRE last, full-allocation-fit before partial, tier DESC, score DESC
+  function sortByPriority(scored: MatchResultV2[], reqAllocationPct: number): MatchResultV2[] {
+    return [...scored].sort((a, b) => {
+      const ghostA = a.riskFlags.includes("GHOST") ? 0 : 1;
+      const ghostB = b.riskFlags.includes("GHOST") ? 0 : 1;
+      if (ghostA !== ghostB) return ghostB - ghostA;
+      const hireA = a.signal === "HIRE" ? 0 : 1;
+      const hireB = b.signal === "HIRE" ? 0 : 1;
+      if (hireA !== hireB) return hireB - hireA;
+      // Prefer employees who can fully meet the required allocation %
+      const meetsA = a.availableFTE >= reqAllocationPct ? 1 : 0;
+      const meetsB = b.availableFTE >= reqAllocationPct ? 1 : 0;
+      if (meetsA !== meetsB) return meetsB - meetsA;
+      const ta = availabilityTier(a.availableFTE);
+      const tb = availabilityTier(b.availableFTE);
+      if (ta !== tb) return tb - ta;
+      return b.matchScore - a.matchScore;
+    });
+  }
 
   for (const ctx of processOrder) {
     const { req, windowStart, windowEnd, reqSkillset, reqSolution, conversionPct } = ctx;
@@ -1163,100 +1295,99 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
     if (conversionPct === 0) continue;
 
     const reqSkills  = textToRequiredSkills(req.skillset ?? "", allSkills);
-    const parsed     = normalizeResourceRequest(req.resourcesRequested);
+    // Parse role from DB value; if the DB value is null/stale, fall back to the raw xlsx cell.
+    let parsed = normalizeResourceRequest(req.resourcesRequested);
+    if (parsed.canonicalRoles.length === 0) {
+      const xlsxRaw = String(ctx.srcRow[C.RESOURCES_REQUESTED] ?? "").trim();
+      if (xlsxRaw) {
+        const parsedFromXlsx = normalizeResourceRequest(xlsxRaw);
+        if (parsedFromXlsx.canonicalRoles.length > 0) parsed = parsedFromXlsx;
+      }
+    }
     const scoreOpts  = { windowStart, windowEnd, canonicalRoles: parsed.canonicalRoles, reqSkillset, reqSolution };
 
-    // Role-filtered candidate pool (leavers already excluded from activeCandidates)
-    const rolePool =
-      parsed.canonicalRoles.length > 0
-        ? activeCandidates.filter((emp) =>
-            employeeMatchesRole(emp.jobName, parsed.canonicalRoles),
-          )
-        : activeCandidates;
-
-    const roleFiltered = rolePool.length > 0 && parsed.canonicalRoles.length > 0;
+    const roleFiltered = parsed.canonicalRoles.length > 0;
     const fallbackUsed = parsed.canonicalRoles.length === 0;
 
-    // Widen to full pool when role is recognised but nobody holds that title
-    const candidatePool = rolePool.length > 0 ? rolePool : activeCandidates;
-
-    // Score every candidate (in-memory — no extra DB calls)
-    const allScored: MatchResultV2[] = candidatePool.map((emp) =>
+    // Score ALL active candidates once — reused by every cascade level and Alternates sheet
+    const allScored: MatchResultV2[] = activeCandidates.map((emp) =>
       scoreEmployee(emp, reqSkills, scoreOpts),
     );
+    const scoreById = new Map<string, MatchResultV2>(allScored.map((r) => [r.employeeId, r]));
 
-    // Top-3 by pure match score for the Alternates sheet
+    // Top-3 by pure match score for the Alternates sheet (full pool — best options regardless of role)
     const topByScore = [...allScored]
       .sort((a, b) => b.matchScore - a.matchScore)
       .slice(0, 3);
 
-    // Selection order (priority descending):
-    //   1. Non-GHOST before GHOST — ghost flags indicate unreliable/non-performing resource
-    //   2. Non-HIRE before HIRE  — any internal capacity preferred over external hire signal
-    //   3. Availability tier DESC — most-free employee within tier wins
-    //   4. Match score DESC       — highest quality within availability tier
-    const selectionOrder = [...allScored].sort((a, b) => {
-      const ghostA = a.riskFlags.includes("GHOST") ? 0 : 1;
-      const ghostB = b.riskFlags.includes("GHOST") ? 0 : 1;
-      if (ghostA !== ghostB) return ghostB - ghostA;
-      const hireA = a.signal === "HIRE" ? 0 : 1;
-      const hireB = b.signal === "HIRE" ? 0 : 1;
-      if (hireA !== hireB) return hireB - hireA;
-      const ta = availabilityTier(a.availableFTE);
-      const tb = availabilityTier(b.availableFTE);
-      if (ta !== tb) return tb - ta;
-      return b.matchScore - a.matchScore;
-    });
-
     // ── Claim gating: stages < 60% are soft reservations ─────────────────────
-    // High-confidence deals (≥ 60%) hard-claim the resource — blocks them for this window.
-    // Early-stage deals (< 60%) pre-identify a candidate without blocking their availability
-    // for more certain work that comes along later.
     const hardClaim = conversionPct >= 0.60;
 
-    // Pick the first candidate with no window conflict
+    // ── Cross-role/cross-COE cascade ─────────────────────────────────────────
+    // Cascade order (tried in sequence, stops at first successful pick):
+    //   A: Exact role + COE-aligned      — best match
+    //   B: Exact role + any COE           — cross-COE flag
+    //   C: Adjacent role + COE-aligned    — acting-role flag
+    //   D: Adjacent role + any COE        — cross-role + cross-COE
+    //   E: Any internal (grade fallback)  — last resort before external hire
+    const requestedDomain = deriveRequestCoeDomain(reqSkillset, reqSolution);
+    const adjRoles = getAdjacentRoles(parsed.canonicalRoles);
+
+    // Helper: get sorted pre-scored results for a subset of employees
+    function poolOf(filter: (emp: EmployeeRow) => boolean): MatchResultV2[] {
+      return sortByPriority(
+        activeCandidates.filter(filter).map((e) => scoreById.get(e.id)!).filter(Boolean),
+        ctx.reqAllocationPct,
+      );
+    }
+
+    type CascadeLevel = { pool: MatchResultV2[]; crossCoe: boolean; actingRole: string | null };
+    const cascadeLevels: CascadeLevel[] = [];
+
+    if (parsed.canonicalRoles.length > 0) {
+      const isExact = (emp: EmployeeRow) => employeeMatchesRole(emp.jobName, parsed.canonicalRoles);
+      const isAdj   = (emp: EmployeeRow) => adjRoles.length > 0 && employeeMatchesRole(emp.jobName, adjRoles) && !isExact(emp);
+      const isCoe   = (emp: EmployeeRow) => coeDomainMatches(emp, requestedDomain);
+
+      // A: exact role + COE-aligned
+      cascadeLevels.push({ pool: poolOf((e) => isExact(e) && isCoe(e)),  crossCoe: false,            actingRole: null });
+      // B: exact role + cross-COE (only meaningful when a domain was actually derived)
+      cascadeLevels.push({ pool: poolOf((e) => isExact(e) && !isCoe(e)), crossCoe: !!requestedDomain, actingRole: null });
+      // C: adjacent role + COE-aligned
+      cascadeLevels.push({ pool: poolOf((e) => isAdj(e) && isCoe(e)),   crossCoe: false,            actingRole: parsed.display });
+      // D: adjacent role + cross-COE
+      cascadeLevels.push({ pool: poolOf((e) => isAdj(e) && !isCoe(e)),  crossCoe: !!requestedDomain, actingRole: parsed.display });
+      // No Pool E — unrelated job titles (e.g. "Head of Talent" for a PA request) must not be used.
+      // If A–D are all exhausted the system falls through to HIRE.
+    } else {
+      // Role completely unrecognised — do not match ANY internal employee; recommend HIRE.
+      // Matching the full pool here would surface wrong-role employees (e.g. SE for a PA request).
+      // Leave cascadeLevels empty; the picked===null path below emits a HIRE row.
+    }
+
     let picked: MatchResultV2 | null = null;
     let pickedTier = 0;
     let poolExhausted = false;
+    let pickedCrossCoe = false;
+    let pickedActingRole: string | null = null;
 
-    for (const candidate of selectionOrder) {
-      if (!tracker.hasConflict(candidate.employeeId, windowStart, windowEnd)) {
-        picked     = candidate;
-        pickedTier = availabilityTier(candidate.availableFTE);
-        if (hardClaim) tracker.claim(candidate.employeeId, windowStart, windowEnd);
-        break;
-      }
-    }
-
-    // Role pool exhausted — expand to full active pool once
-    if (!picked && roleFiltered) {
-      const fullScored = activeCandidates
-        .map((emp) => scoreEmployee(emp, reqSkills, scoreOpts))
-        .sort((a, b) => {
-          const ghostA = a.riskFlags.includes("GHOST") ? 0 : 1;
-          const ghostB = b.riskFlags.includes("GHOST") ? 0 : 1;
-          if (ghostA !== ghostB) return ghostB - ghostA;
-          const hireA = a.signal === "HIRE" ? 0 : 1;
-          const hireB = b.signal === "HIRE" ? 0 : 1;
-          if (hireA !== hireB) return hireB - hireA;
-          const ta = availabilityTier(a.availableFTE);
-          const tb = availabilityTier(b.availableFTE);
-          if (ta !== tb) return tb - ta;
-          return b.matchScore - a.matchScore;
-        });
-      for (const candidate of fullScored) {
+    for (const level of cascadeLevels) {
+      for (const candidate of level.pool) {
         if (!tracker.hasConflict(candidate.employeeId, windowStart, windowEnd)) {
-          picked     = candidate;
-          pickedTier = availabilityTier(candidate.availableFTE);
+          picked          = candidate;
+          pickedTier      = availabilityTier(candidate.availableFTE);
+          pickedCrossCoe  = level.crossCoe;
+          pickedActingRole = level.actingRole;
           if (hardClaim) tracker.claim(candidate.employeeId, windowStart, windowEnd);
           break;
         }
       }
+      if (picked) break;
     }
 
-    // True pool exhaustion — recommend best regardless (shared resource, clearly flagged)
-    if (!picked) {
-      picked = selectionOrder[0] ?? null;
+    // True pool exhaustion — recommend best available regardless (shared resource, flagged)
+    if (!picked && allScored.length > 0) {
+      picked = [...allScored].sort((a, b) => b.matchScore - a.matchScore)[0] ?? null;
       poolExhausted = true;
       if (picked && hardClaim) tracker.claim(picked.employeeId, windowStart, windowEnd);
     }
@@ -1276,6 +1407,10 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
           picked.isRollingOff,
           picked.coeAligned,
           conversionPct,
+          pickedCrossCoe,
+          pickedActingRole,
+          ctx.reqAllocationPct,
+          picked.availableFTE,
         ),
         rationale: "",
         confidence: "-",
@@ -1283,8 +1418,11 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
         roleFiltered,
         fallbackUsed,
         poolExhausted,
+        crossCoe: pickedCrossCoe,
+        actingRole: pickedActingRole,
         priorityLabel: ctx.priorityLabel,
         conversionPct,
+        reqAllocationPct: ctx.reqAllocationPct,
       });
     }
   }
@@ -1370,12 +1508,20 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
     const req  = dbRequests[i];
     const asgn = req ? assignments.get(req.id) : null;
 
-    // Fill existing pipeline xlsx columns
+    // Fill existing pipeline xlsx columns — always overwrite to avoid stale values from prior runs
     if (asgn) {
       const m = asgn.match;
-      srcRow[C.RESOURCE_RECOMMENDED] = m.jobName ? `${m.name} (${m.jobName})` : m.name;
-      srcRow[C.PCT_AVAILABLE]         = `${Math.round(m.availableFTE * 100)}%`;
-      srcRow[C.SKILLSET_MATCH]        = toSkillsetMatch(m.signal, m.skillScore, m.availableFTE);
+      srcRow[C.RESOURCE_RECOMMENDED] = `${m.employeeCode} · ${m.name} (${m.designationName ?? m.jobName ?? "—"})`;
+      const availPctStr = `${Math.round(m.availableFTE * 100)}%`;
+      const neededPctStr = asgn.reqAllocationPct > 0 ? ` / ${Math.round(asgn.reqAllocationPct * 100)}% needed` : "";
+      srcRow[C.PCT_AVAILABLE] = `${availPctStr}${neededPctStr}`;
+      srcRow[C.SKILLSET_MATCH] = toSkillsetMatch(m.signal, m.skillScore, m.availableFTE);
+    } else {
+      // No internal match found — clear any stale values from a previous export run
+      const roleLabel = req ? (normalizeResourceRequest(req.resourcesRequested).display || String(srcRow[C.RESOURCES_REQUESTED] ?? "Unknown role")) : "Unknown role";
+      srcRow[C.RESOURCE_RECOMMENDED] = `HIRE — no ${roleLabel} available internally`;
+      srcRow[C.PCT_AVAILABLE] = "";
+      srcRow[C.SKILLSET_MATCH] = "HIRE";
     }
 
     // Append 14 value-add columns
@@ -1401,6 +1547,9 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
             asgn.fallbackUsed,
             asgn.poolExhausted,
             asgn.conversionPct,
+            asgn.crossCoe,
+            asgn.actingRole,
+            asgn.reqAllocationPct,
           ),
           asgn.match.unmetSkills.join(", ") || "-",                          // 32 Unmet Skills
           asgn.plan,                                                         // 33 Plan

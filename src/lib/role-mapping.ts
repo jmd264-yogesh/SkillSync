@@ -24,7 +24,10 @@ const SINGLE_ROLE_MAP: Record<string, string> = {
   "associate consultant":         "Associate Consultant",
   "m":                            "Manager",
   "manager":                      "Manager",
-  "pa":                           "Partner",
+  "pa":                           "Principal Architect",
+  "principal architect":          "Principal Architect",
+  "pta":                          "Principal Technology Architect",
+  "principal technology architect": "Principal Technology Architect",
   "partner":                      "Partner",
   "ap":                           "Associate Partner",
   "associate partner":            "Associate Partner",
@@ -41,7 +44,12 @@ const SINGLE_ROLE_MAP: Record<string, string> = {
   "solutions enabler":            "Solutions Enabler",
 };
 
-const MULTI_ROLE_PATTERNS: Array<{ pattern: RegExp; roles: string[] }> = [
+const MULTI_ROLE_PATTERNS: Array<{ pattern: RegExp; roles: string[]; display?: string }> = [
+  // PA → both Principal Architect (consulting-heavy) and Principal Technology Architect (tech-heavy).
+  // COE alignment in the cascade naturally ranks the right type first per project domain.
+  { pattern: /^pa$/i,
+    roles: ["Principal Architect", "Principal Technology Architect"],
+    display: "Principal Architect" },
   { pattern: /^ap\s*\/\s*p$/i,
     roles: ["Associate Partner", "Principal"] },
   { pattern: /^sac\s*[\/,]\s*ac$/i,
@@ -80,9 +88,9 @@ export function normalizeResourceRequest(raw: string | null): ParsedRole {
     .trim();
 
   // Try multi-role patterns first (more specific)
-  for (const { pattern, roles } of MULTI_ROLE_PATTERNS) {
+  for (const { pattern, roles, display: patternDisplay } of MULTI_ROLE_PATTERNS) {
     if (pattern.test(cleaned)) {
-      return { canonicalRoles: roles, count, isEM, display: roles.join(" / ") };
+      return { canonicalRoles: roles, count, isEM, display: patternDisplay ?? roles.join(" / ") };
     }
   }
 
