@@ -533,6 +533,26 @@ async function ingestCompetencies(): Promise<IngestStats> {
 }
 
 // ─── File 07: Pipeline_Details.xlsx ──────────────────────────
+// Maps HubSpot stage names to the internal stage keys used by the analytics client
+const HUBSPOT_STAGE_MAP: Record<string, string> = {
+  "opportunity inception": "LEAD",
+  "replacement":           "LEAD",
+  "make it real":          "PROPOSAL",
+  "build the proposition": "SOW_PENDING",
+  "build the proposition (proposal)": "SOW_PENDING",
+  "scoping approval":      "SOW_PENDING",
+  "propose & negotiate":   "SOW_SIGNED",
+  "propose and negotiate": "SOW_SIGNED",
+  "sow with customer":     "SOW_SIGNED",
+  "sow pending signature": "SOW_SIGNED",
+  "signed":                "SOW_SIGNED",
+  "deal won":              "ACTIVE",
+};
+
+function mapHubspotStage(raw: string): string {
+  return HUBSPOT_STAGE_MAP[raw.toLowerCase()] ?? raw.toUpperCase().replace(/\s+/g, "_");
+}
+
 async function ingestPipeline(): Promise<IngestStats> {
   const rows = readXlsx("07. 260624_Pipeline_Details.xlsx");
   const stats = emptyStats();
@@ -549,7 +569,13 @@ async function ingestPipeline(): Promise<IngestStats> {
     const sowRaw = String(row["SOW Signed"] ?? "").toLowerCase().trim();
     const sowSigned = sowRaw === "yes" || sowRaw === "true" || sowRaw === "1";
 
-    const dealStageRaw = row["Deal Stage\n(HubSpot)"] ?? row["Deal Stage (HubSpot)"] ?? row["Deal Stage"] ?? null;
+    // Column header uses CRLF in the Excel file — normalise by trying all variants
+    const dealStageRaw =
+      row["Deal Stage\r\n(HubSpot)"] ??
+      row["Deal Stage\n(HubSpot)"] ??
+      row["Deal Stage (HubSpot)"] ??
+      row["Deal Stage"] ??
+      null;
 
     await db.pipelineRequest.create({
       data: {
@@ -559,7 +585,7 @@ async function ingestPipeline(): Promise<IngestStats> {
         clientPriority: String(row["Client Priority"] ?? "").trim() || null,
         likelyStart,
         numberOfWeeks,
-        dealStage: dealStageRaw != null ? String(dealStageRaw).trim() : null,
+        dealStage: dealStageRaw != null ? mapHubspotStage(String(dealStageRaw).trim()) : null,
         solution: String(row["Solution"] ?? "").trim() || null,
         resourcesRequested: String(row["Resources Requested"] ?? "").trim() || null,
         resourceRecommended: row["Resource Recommended"] != null ? parseFloat_(row["Resource Recommended"]) : null,

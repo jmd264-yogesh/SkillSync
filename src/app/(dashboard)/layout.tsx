@@ -23,7 +23,7 @@ export default async function DashboardLayout({
           userName={session.user.name}
           userRole={session.user.role}
         />
-        <main className="flex-1 p-8 gradient-mesh min-h-[calc(100vh-4rem)]">
+        <main className="flex-1 p-8 gradient-mesh min-h-[calc(100vh-4rem)] overflow-x-hidden">
           <div className=" animate-fade-in">
             {children}
           </div>

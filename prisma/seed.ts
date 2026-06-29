@@ -1086,6 +1086,42 @@ async function main() {
     console.log("✓ Feedback module (already seeded, skipping)");
   }
 
+  // ── Pipeline Requests (mock deal pipeline) ──────────────────────────────
+  const existingPipeline = await prisma.pipelineRequest.count();
+  if (existingPipeline === 0) {
+    const now = new Date();
+    const fut = (months: number) => new Date(now.getFullYear(), now.getMonth() + months, 1);
+
+    await prisma.pipelineRequest.createMany({
+      data: [
+        // ── LEAD (Opportunity Inception) ──────────────────────────
+        { cluster: 1, client: "Barclays Capital",      dealStage: "LEAD",        solution: "Customer",          resourceRecommended: 3.0, numberOfWeeks: 16, likelyStart: fut(4),  clientTier: "GOLD",   isNewClient: true,  clientRelationshipMonths: null, sowSigned: false, skillset: "Python, Snowflake, dbt",          resourcesRequested: "2x Sr Data Engineer, 1x PM" },
+        { cluster: 2, client: "Shell Energy",          dealStage: "LEAD",        solution: "Operations",        resourceRecommended: 1.0, numberOfWeeks: 12, likelyStart: fut(5),  clientTier: "SILVER", isNewClient: false, clientRelationshipMonths: 18,   sowSigned: false, skillset: "SQL, Power BI",                   resourcesRequested: "1x Data Analyst" },
+        { cluster: 5, client: "Reckitt Benckiser",     dealStage: "LEAD",        solution: "Sales",             resourceRecommended: 1.0, numberOfWeeks: 12, likelyStart: fut(6),  clientTier: "BRONZE", isNewClient: true,  clientRelationshipMonths: null, sowSigned: false, skillset: "Python, TensorFlow",              resourcesRequested: "1x ML Engineer" },
+        { cluster: 3, client: "BT Group",              dealStage: "LEAD",        solution: "TechOps",           resourceRecommended: 2.0, numberOfWeeks: 20, likelyStart: fut(7),  clientTier: "SILVER", isNewClient: false, clientRelationshipMonths: 10,   sowSigned: false, skillset: "Kafka, AWS, Python",              resourcesRequested: "2x Data Engineer" },
+        // ── PROPOSAL (Make It Real) ───────────────────────────────
+        { cluster: 1, client: "HSBC Asset Management", dealStage: "PROPOSAL",    solution: "Finance",           resourceRecommended: 4.0, numberOfWeeks: 24, likelyStart: fut(3),  clientTier: "GOLD",   isNewClient: false, clientRelationshipMonths: 36,   sowSigned: false, skillset: "Azure, Databricks, PySpark",      resourcesRequested: "3x Data Engineer, 1x Architect", serviceLine: "Due Diligence" },
+        { cluster: 3, client: "Tesco PLC",             dealStage: "PROPOSAL",    solution: "Full Stack",        resourceRecommended: 2.0, numberOfWeeks: 20, likelyStart: fut(4),  clientTier: "BRONZE", isNewClient: true,  clientRelationshipMonths: null, sowSigned: false, skillset: "React, Node.js, PostgreSQL",      resourcesRequested: "2x Full Stack Developer" },
+        { cluster: 2, client: "Aviva Insurance",       dealStage: "PROPOSAL",    solution: "Customer",          resourceRecommended: 2.0, numberOfWeeks: 8,  likelyStart: fut(2),  clientTier: "SILVER", isNewClient: false, clientRelationshipMonths: 12,   sowSigned: false, skillset: "SQL, Tableau, Data Modelling",    resourcesRequested: "1x Data Architect, 1x Analyst",  serviceLine: "Data Advisory" },
+        { cluster: 4, client: "Diageo PLC",            dealStage: "PROPOSAL",    solution: "People",            resourceRecommended: 1.0, numberOfWeeks: 8,  likelyStart: fut(3),  clientTier: "BRONZE", isNewClient: false, clientRelationshipMonths: 6,    sowSigned: false, skillset: "Power BI, Workday Analytics",     resourcesRequested: "1x HR Analytics Consultant",     serviceLine: "Data Advisory" },
+        // ── SOW_PENDING (Build The Proposition) ───────────────────
+        { cluster: 1, client: "BP Digital",            dealStage: "SOW_PENDING", solution: "Platform Engineering", resourceRecommended: 3.0, numberOfWeeks: 32, likelyStart: fut(3), clientTier: "GOLD",   isNewClient: false, clientRelationshipMonths: 24,   sowSigned: false, skillset: "Kubernetes, Terraform, GCP",      resourcesRequested: "2x Platform Engineer, 1x DevOps", serviceLine: "Managed Service" },
+        { cluster: 4, client: "Unilever Global",       dealStage: "SOW_PENDING", solution: "Value Creation",    resourceRecommended: 3.0, numberOfWeeks: 16, likelyStart: fut(4),  clientTier: "GOLD",   isNewClient: false, clientRelationshipMonths: 60,   sowSigned: false, skillset: "Python, ML, Azure ML",            resourcesRequested: "1x Sr Consultant, 2x Analyst",  serviceLine: "Value Creation" },
+        { cluster: 2, client: "Vodafone UK",           dealStage: "SOW_PENDING", solution: "TechOps",           resourceRecommended: 2.0, numberOfWeeks: 20, likelyStart: fut(5),  clientTier: "SILVER", isNewClient: false, clientRelationshipMonths: 8,    sowSigned: false, skillset: "Spark, Kafka, AWS",               resourcesRequested: "2x Data Engineer",               serviceLine: "Core Reporting" },
+        { cluster: 1, client: "Standard Chartered",    dealStage: "SOW_PENDING", solution: "Migration",         resourceRecommended: 2.0, numberOfWeeks: 28, likelyStart: fut(2),  clientTier: "GOLD",   isNewClient: false, clientRelationshipMonths: 18,   sowSigned: false, skillset: "AWS, Azure, Terraform",           resourcesRequested: "2x Cloud Architect",             serviceLine: "Exit Support" },
+        // ── SOW_SIGNED (Scoping Approval, 80%) ───────────────────
+        { cluster: 1, client: "NatWest Group",         dealStage: "SOW_SIGNED",  solution: "Finance",           resourceRecommended: 4.0, numberOfWeeks: 40, likelyStart: fut(1),  clientTier: "GOLD",   isNewClient: false, clientRelationshipMonths: 48,   sowSigned: true,  skillset: "Python, dbt, Snowflake",          resourcesRequested: "3x Sr Engineer, 1x PM",          serviceLine: "Due Diligence" },
+        { cluster: 3, client: "Marks & Spencer",       dealStage: "SOW_SIGNED",  solution: "Customer",          resourceRecommended: 2.0, numberOfWeeks: 24, likelyStart: fut(2),  clientTier: "SILVER", isNewClient: true,  clientRelationshipMonths: null, sowSigned: true,  skillset: "Python, ML, Scikit-learn",        resourcesRequested: "2x Data Scientist",              serviceLine: "Data Advisory" },
+        // ── ACTIVE (100%) ─────────────────────────────────────────
+        { cluster: 1, client: "Lloyds Banking Group",  dealStage: "ACTIVE",      solution: "Finance",           resourceRecommended: 4.0, numberOfWeeks: 52, likelyStart: fut(-5), clientTier: "GOLD",   isNewClient: false, clientRelationshipMonths: 72,   sowSigned: true,  skillset: "Scala, Spark, Hive",              resourcesRequested: "4x Data Engineer",               serviceLine: "Managed Service",  status: "ACTIVE" },
+        { cluster: 2, client: "AstraZeneca Digital",   dealStage: "ACTIVE",      solution: "Operations",        resourceRecommended: 3.0, numberOfWeeks: 36, likelyStart: fut(-3), clientTier: "SILVER", isNewClient: false, clientRelationshipMonths: 30,   sowSigned: true,  skillset: "React, Python, PostgreSQL",       resourcesRequested: "2x Full Stack, 1x BA",           serviceLine: "Core Reporting",   status: "ACTIVE" },
+      ],
+    });
+    console.log("✓ Pipeline requests (17 mock deals seeded)");
+  } else {
+    console.log(`✓ Pipeline requests (${existingPipeline} already exist, skipped)`);
+  }
+
   console.log("\n✅ Seeding complete.\n");
   console.log("Accounts:");
   console.log("  Admin   : admin@skillmatrix.com        / admin123456");
