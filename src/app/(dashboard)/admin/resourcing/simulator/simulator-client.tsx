@@ -936,6 +936,11 @@ export function SimulatorClient({ skills }: SimulatorClientProps) {
                           No internal candidates — consider external hire
                         </span>
                       )}
+                      {rm.candidates.length > 0 && rm.candidates[0]?.isPromoted && (
+                        <span className="text-[10px] text-violet-700 bg-violet-50 border border-violet-200 font-medium px-2 py-0.5 rounded-full">
+                          No {rm.role} available — showing promoted {rm.candidates[0].promotedFrom}s
+                        </span>
+                      )}
                     </div>
                     {rm.candidates.length > 0 && (
                       <div className="rounded-lg border overflow-hidden">
@@ -971,6 +976,11 @@ export function SimulatorClient({ skills }: SimulatorClientProps) {
                                     <td className="px-3 py-2.5 font-mono font-semibold text-slate-700">{c.employeeCode}</td>
                                     <td className="px-3 py-2.5">
                                       <span className="font-medium text-slate-800">{c.name}</span>
+                                      {c.isPromoted && (
+                                        <span className="ml-1.5 inline-flex items-center gap-0.5 text-[9px] text-violet-700 bg-violet-50 border border-violet-200 font-semibold uppercase px-1.5 py-0.5 rounded-full">
+                                          ↑ Promoted
+                                        </span>
+                                      )}
                                       {hasRisk && (
                                         <span className="ml-1.5 text-[9px] text-amber-600 font-semibold uppercase">
                                           {c.riskFlags.slice(0, 2).join(" · ")}

@@ -6,6 +6,7 @@ import { genAI, MODELS } from "@/lib/ai/client";
 import { PROPOSITION_ROLES } from "@/lib/constants";
 import { lookupBaseline, HISTORICAL_REFERENCE_TABLE } from "@/lib/historical-allocations";
 import { computeMatchRanking } from "@/server/services/matching.service";
+import { employeeMatchesRole } from "@/lib/role-mapping";
 import type { PropositionRole } from "@/lib/constants";
 import type { HistoricalAllocation } from "@/lib/historical-allocations";
 
@@ -55,6 +56,20 @@ const CHENNAI_ROLES = [
   "Software Engineer",
   "Intern Technology",
 ];
+
+// Maps a requested role → the junior role that can be promoted to fill it
+const PROMOTION_MAP: Partial<Record<string, string>> = {
+  "Senior Software Engineer":        "Software Engineer",
+  "Technical Solutions Architect":   "Senior Software Engineer",
+  "Senior Solutions Consultant":     "Solutions Consultant",
+  "Solutions Consultant":            "Solutions Enabler",
+  "Manager":                         "Senior Consultant",
+  "Principal":                       "Manager",
+  "Associate Partner":               "Principal",
+  "Partner":                         "Associate Partner",
+  "Associate Partner Technology":    "Principal Technology Architect",
+  "Partner Technology":              "Associate Partner Technology",
+};
 
 const SYSTEM = `You are a staffing consultant for a professional services data & analytics firm
 with delivery split between UK (client-facing) and Chennai (technical delivery hub).
@@ -302,6 +317,8 @@ export interface RoleCandidate {
   scores: CandidateScores;
   unmetSkills: string[];
   recommendation: string;
+  isPromoted: boolean;
+  promotedFrom: string | null;
 }
 
 export interface RoleResourceMatch {
@@ -365,44 +382,84 @@ export async function findResourcesForSimulation(
 
   const results = await Promise.all(
     activeRoles.map(async (alloc) => {
-      const candidates = await computeMatchRanking({
+      type MatchRow = Awaited<ReturnType<typeof computeMatchRanking>>[number];
+
+      const getJobName = (c: MatchRow) =>
+        (c as unknown as Record<string, unknown>).jobName as string | null ?? null;
+
+      const gradeFilter = (rows: MatchRow[], role: string) =>
+        rows.filter((c) => employeeMatchesRole(getJobName(c), [role])).slice(0, 5);
+
+      const mapCandidate = (c: MatchRow, isPromoted: boolean, promotedFrom: string | null): RoleCandidate => {
+        const scores = {
+          skill:        Math.round(c.skillScore ?? 0),
+          competency:   Math.round(c.competencyScore ?? 0),
+          availability: Math.round(c.availabilityFit ?? 0),
+          billability:  Math.round(c.billabilityFit ?? 0),
+          evidence:     Math.round(c.evidenceStrength ?? 0),
+        };
+        const unmetSkills = (c.unmetSkills ?? []) as string[];
+        const baseRec = deriveRecommendation(
+          c.matchScore, c.availableFTE, c.signal, c.riskFlags as string[],
+          scores, unmetSkills,
+        );
+        const recommendation = isPromoted
+          ? `Promoted from ${promotedFrom ?? "junior role"} — ${baseRec.toLowerCase()}`
+          : baseRec;
+        return {
+          employeeId:      c.employeeId,
+          employeeCode:    c.employeeCode,
+          name:            c.name,
+          jobName:         getJobName(c),
+          designationName: c.designationName,
+          coeName:         c.coeName,
+          matchScore:      c.matchScore,
+          availableFTE:    Math.round(c.availableFTE * 100),
+          signal:          c.signal,
+          riskFlags:       c.riskFlags as string[],
+          scores,
+          unmetSkills,
+          recommendation,
+          isPromoted,
+          promotedFrom,
+        };
+      };
+
+      // Grade-exact filter: prevents "Senior Software Engineer" matching a "Software Engineer" request.
+      const raw = await computeMatchRanking({
         requiredSkills: techStack ?? [],
         canonicalRoles: [alloc.role],
-        topN: 5,
+        topN: 10,
         internalFirst: true,
       });
+      const gradeExact = gradeFilter(raw, alloc.role);
+
+      let roleCandidates: RoleCandidate[];
+
+      if (gradeExact.length > 0) {
+        roleCandidates = gradeExact.map((c) => mapCandidate(c, false, null));
+      } else {
+        // No exact grade match — try the direct junior role (promoted resource)
+        const juniorRole = PROMOTION_MAP[alloc.role];
+        if (juniorRole) {
+          const juniorRaw = await computeMatchRanking({
+            requiredSkills: techStack ?? [],
+            canonicalRoles: [juniorRole],
+            topN: 10,
+            internalFirst: true,
+          });
+          const juniorExact = gradeFilter(juniorRaw, juniorRole)
+            .filter((c) => c.matchScore >= 55); // only strong juniors are worth promoting
+          roleCandidates = juniorExact.map((c) => mapCandidate(c, true, juniorRole));
+        } else {
+          roleCandidates = [];
+        }
+      }
 
       return {
         role: alloc.role,
         fte: alloc.fte,
-        candidates: candidates.map((c) => {
-          const scores = {
-            skill:        Math.round(c.skillScore ?? 0),
-            competency:   Math.round(c.competencyScore ?? 0),
-            availability: Math.round(c.availabilityFit ?? 0),
-            billability:  Math.round(c.billabilityFit ?? 0),
-            evidence:     Math.round(c.evidenceStrength ?? 0),
-          };
-          const unmetSkills = (c.unmetSkills ?? []) as string[];
-          return {
-            employeeId:      c.employeeId,
-            employeeCode:    c.employeeCode,
-            name:            c.name,
-            jobName:         (c as unknown as Record<string, unknown>).jobName as string | null ?? null,
-            designationName: c.designationName,
-            coeName:         c.coeName,
-            matchScore:      c.matchScore,
-            availableFTE:    Math.round(c.availableFTE * 100),
-            signal:          c.signal,
-            riskFlags:       c.riskFlags as string[],
-            scores,
-            unmetSkills,
-            recommendation:  deriveRecommendation(
-              c.matchScore, c.availableFTE, c.signal, c.riskFlags as string[],
-              scores, unmetSkills,
-            ),
-          };
-        }),
+        candidates: roleCandidates,
       };
     }),
   );
