@@ -36,31 +36,31 @@ import type {
   RoleResourceMatch,
 } from "@/server/actions/proposition-simulator";
 
-// UK = senior client-facing consulting roles (partner-level at bottom)
+// UK = senior client-facing consulting roles
 const UK_ROLES: PropositionRole[] = [
-  "Senior Consultant",
-  "Consultant",
   "Partner",
   "Associate Partner",
   "Principal",
   "Manager",
+  "Senior Consultant",
+  "Consultant",
 ];
 
-// Chennai = delivery, junior consulting, and technology roles (tech-partner tier at bottom)
+// Chennai = delivery, junior consulting, and technology roles
 const CHENNAI_ROLES: PropositionRole[] = [
   "Senior Associate Consultant",
   "Associate Consultant",
   "Intern",
+  "Partner Technology",
+  "Associate Partner Technology",
+  "Principal Technology Architect",
+  "Technical Solutions Architect",
   "Senior Solutions Consultant",
   "Solutions Consultant",
   "Solutions Enabler",
   "Senior Software Engineer",
   "Software Engineer",
   "Intern Technology",
-  "Partner Technology",
-  "Associate Partner Technology",
-  "Principal Technology Architect",
-  "Technical Solutions Architect",
 ];
 
 const CRITICALITY_COLORS: Record<CriticalityLevel, string> = {
@@ -86,37 +86,49 @@ function LocationPanel({
   roles,
   allocationMap,
   loading,
+  hideEmpty = false,
 }: {
   title: string;
   flag: string;
   roles: PropositionRole[];
   allocationMap: Map<PropositionRole, number>;
   loading: boolean;
+  hideEmpty?: boolean;
 }) {
+  const visibleRoles = hideEmpty
+    ? roles.filter((r) => (allocationMap.get(r) ?? 0) > 0)
+    : roles;
+
   return (
     <div className="border rounded-lg overflow-hidden">
       <div className="px-4 py-2 bg-slate-50 border-b flex items-center gap-2">
         <span className="text-base leading-none">{flag}</span>
         <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">{title}</span>
       </div>
-      <div className="divide-y">
-        {roles.map((role) => {
-          const fte = allocationMap.get(role) ?? 0;
-          return (
-            <div
-              key={role}
-              className={`flex items-center justify-between px-4 py-2 ${
-                fte > 0 ? "bg-white" : "bg-slate-50/40"
-              }`}
-            >
-              <span className={`text-xs ${fte > 0 ? "text-slate-800 font-medium" : "text-slate-400"}`}>
-                {role}
-              </span>
-              <AllocLabel fte={fte} loading={loading} />
-            </div>
-          );
-        })}
-      </div>
+      {visibleRoles.length === 0 ? (
+        <div className="px-4 py-3 text-xs text-slate-400 text-center">
+          No active roles for this location
+        </div>
+      ) : (
+        <div className="divide-y">
+          {visibleRoles.map((role) => {
+            const fte = allocationMap.get(role) ?? 0;
+            return (
+              <div
+                key={role}
+                className={`flex items-center justify-between px-4 py-2 ${
+                  fte > 0 ? "bg-white" : "bg-slate-50/40"
+                }`}
+              >
+                <span className={`text-xs ${fte > 0 ? "text-slate-800 font-medium" : "text-slate-400"}`}>
+                  {role}
+                </span>
+                <AllocLabel fte={fte} loading={loading} />
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -149,6 +161,49 @@ function BaselinePanel({ baseline }: { baseline: BaselineAllocation }) {
   );
 }
 
+// ── Resource mode toggle ──────────────────────────────────────────────────────
+
+type ResourceMode = "ai" | "baseline";
+
+function ResourceModeToggle({
+  mode,
+  onMode,
+  hasBaseline,
+}: {
+  mode: ResourceMode;
+  onMode: (m: ResourceMode) => void;
+  hasBaseline: boolean;
+}) {
+  return (
+    <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5 gap-0.5">
+      <button
+        type="button"
+        onClick={() => onMode("ai")}
+        className={`text-xs px-3 py-1.5 rounded-md font-medium transition-all ${
+          mode === "ai"
+            ? "bg-white text-violet-700 shadow-sm border border-slate-200"
+            : "text-slate-500 hover:text-slate-700"
+        }`}
+      >
+        AI Recommendation
+      </button>
+      <button
+        type="button"
+        onClick={() => onMode("baseline")}
+        disabled={!hasBaseline}
+        className={`text-xs px-3 py-1.5 rounded-md font-medium transition-all ${
+          mode === "baseline"
+            ? "bg-white text-blue-700 shadow-sm border border-slate-200"
+            : "text-slate-500 hover:text-slate-700"
+        } disabled:opacity-40 disabled:cursor-not-allowed`}
+        title={!hasBaseline ? "No historical baseline for this combination" : undefined}
+      >
+        Historical Baseline
+      </button>
+    </div>
+  );
+}
+
 export function SimulatorClient() {
   const [proposition, setProposition] = useState<ServiceLine | "">("");
   const [projectType, setProjectType] = useState("");
@@ -171,6 +226,7 @@ export function SimulatorClient() {
 
   const [resources, setResources] = useState<RoleResourceMatch[]>([]);
   const [resourcesLoading, setResourcesLoading] = useState(false);
+  const [resourceMode, setResourceMode] = useState<ResourceMode>("ai");
 
   function toggleSystem(s: SourceSystem) {
     setSourceSystems((prev) =>
@@ -195,6 +251,7 @@ export function SimulatorClient() {
     setNarrative(null);
     setAllocations([]);
     setBaseline(null);
+    setResources([]);
   }
 
   async function handleSimulate() {
@@ -226,11 +283,16 @@ export function SimulatorClient() {
   }
 
   async function handleFindResources() {
-    const active = allocations.filter((a) => a.fte > 0);
-    if (active.length === 0) return;
+    let source: { role: string; fte: number }[];
+    if (resourceMode === "baseline" && baseline) {
+      source = baseline.resources.filter((r) => r.fte > 0);
+    } else {
+      source = allocations.filter((a) => a.fte > 0);
+    }
+    if (source.length === 0) return;
     setResourcesLoading(true);
     try {
-      const data = await findResourcesForSimulation(active);
+      const data = await findResourcesForSimulation(source);
       setResources(data);
     } catch {
       // silently ignore — show empty state
@@ -239,9 +301,12 @@ export function SimulatorClient() {
     }
   }
 
+  const hasResults = narrative !== null;
+  const hasActiveAllocations = allocations.some((a) => a.fte > 0);
+
   return (
     <div className="space-y-4">
-      {/* Config form */}
+      {/* ── Config form ─────────────────────────────────────────── */}
       <Card className="border-0 shadow-sm">
         <CardContent className="px-5 py-4">
           <div className="flex flex-wrap items-end gap-3">
@@ -270,6 +335,7 @@ export function SimulatorClient() {
                   setNarrative(null);
                   setAllocations([]);
                   setBaseline(null);
+                  setResources([]);
                 }}
                 disabled={!proposition}
               >
@@ -285,7 +351,7 @@ export function SimulatorClient() {
             </div>
 
             {/* Engagement Phase */}
-            <div className="w-40">
+            <div className="w-44">
               <Label className="text-xs font-medium text-slate-600">Phase</Label>
               <Select value={phase} onValueChange={(v) => setPhase((v ?? "") as EngagementPhase | "")}>
                 <SelectTrigger className="h-9 text-sm mt-1">
@@ -319,7 +385,7 @@ export function SimulatorClient() {
             </div>
 
             {/* Start Date */}
-            <div className="w-34">
+            <div className="w-36">
               <Label className="text-xs font-medium text-slate-600">Start Date</Label>
               <Input
                 type="date"
@@ -362,7 +428,7 @@ export function SimulatorClient() {
               className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 transition-colors"
             >
               <span className="font-medium">Source Systems</span>
-              <span className="text-slate-400">(optional)</span>
+              <span className="text-slate-400">(optional — affects Chennai engineering headcount)</span>
               <span className="ml-1 text-slate-400">{showSystems ? "▲" : "▼"}</span>
               {sourceSystems.length > 0 && (
                 <span className="ml-1 bg-violet-100 text-violet-700 text-[10px] font-semibold px-1.5 py-0.5 rounded-full">
@@ -424,13 +490,13 @@ export function SimulatorClient() {
               <div className="mt-2.5">
                 <Textarea
                   rows={3}
-                  placeholder="Describe the project, client context, key deliverables, specific technologies, or delivery constraints that should influence the team composition…"
+                  placeholder="Describe the project, client context, key deliverables, number of source systems, specific technologies, or delivery constraints that should influence the team composition…"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   className="text-sm resize-none"
                 />
                 <p className="mt-1 text-[11px] text-muted-foreground">
-                  This context is sent to AI to refine the allocation recommendation.
+                  This context is sent to AI. Mention source system counts here to scale Chennai engineering roles accordingly.
                 </p>
               </div>
             )}
@@ -440,204 +506,14 @@ export function SimulatorClient() {
         </CardContent>
       </Card>
 
-      {/* Results — only shown after running */}
-      {(narrative || loading) && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Left: Baseline */}
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-slate-700">Historical Baseline</span>
-              {!loading && (
-                <span className="text-xs text-muted-foreground">
-                  {baseline ? "— exact match found" : "— no exact match for this combination"}
-                </span>
-              )}
-            </div>
-            {loading ? (
-              <div className="rounded-lg border p-4 space-y-2">
-                {[...Array(6)].map((_, i) => (
-                  <Skeleton key={i} className="h-4 w-full rounded" />
-                ))}
-              </div>
-            ) : baseline ? (
-              <BaselinePanel baseline={baseline} />
-            ) : (
-              <div className="rounded-lg border border-dashed border-slate-200 p-6 text-center">
-                <p className="text-xs text-muted-foreground">
-                  No historical match for{" "}
-                  <span className="font-medium">{projectType} · {phase || "any phase"} · {criticality || "any criticality"}</span>.
-                  <br />
-                  The AI recommendation below uses the nearest reference pattern.
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Right: AI Recommendation */}
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-slate-700">AI Recommendation</span>
-              {!loading && totalHeadcount !== null && totalHeadcount > 0 && (
-                <span className="text-xs text-muted-foreground">
-                  · {totalHeadcount} headcount
-                </span>
-              )}
-            </div>
-
-            {narrative && !loading && (
-              <div className="bg-violet-50 border border-violet-100 rounded-lg px-4 py-3">
-                <p className="text-xs font-semibold text-violet-700 mb-1 uppercase tracking-wide">
-                  AI Rationale
-                </p>
-                <p className="text-xs text-slate-700 leading-relaxed">{narrative}</p>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 gap-3">
-              <LocationPanel
-                title="UK"
-                flag="🇬🇧"
-                roles={UK_ROLES}
-                allocationMap={allocationMap}
-                loading={loading}
-              />
-              <LocationPanel
-                title="Chennai"
-                flag="🇮🇳"
-                roles={CHENNAI_ROLES}
-                allocationMap={allocationMap}
-                loading={loading}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Find Resources button + results */}
-      {narrative && !loading && allocations.some((a) => a.fte > 0) && (
-        <div className="space-y-4">
-          {resources.length === 0 && (
-            <div className="flex justify-end">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleFindResources}
-                disabled={resourcesLoading}
-                className="gap-2"
-              >
-                {resourcesLoading ? "Finding resources…" : "Find Matching Resources"}
-              </Button>
-            </div>
-          )}
-
-          {resourcesLoading && (
-            <Card className="border-0 shadow-sm">
-              <CardContent className="px-5 py-4 space-y-3">
-                {[...Array(4)].map((_, i) => (
-                  <Skeleton key={i} className="h-16 w-full rounded-lg" />
-                ))}
-              </CardContent>
-            </Card>
-          )}
-
-          {resources.length > 0 && (
-            <Card className="border-0 shadow-sm">
-              <CardHeader className="px-5 py-3 pb-2 flex flex-row items-center justify-between">
-                <CardTitle className="text-sm font-semibold text-slate-700">
-                  Resource Recommendations
-                  <span className="ml-2 text-xs font-normal text-muted-foreground">
-                    — top candidates per role from the match engine
-                  </span>
-                </CardTitle>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleFindResources}
-                  disabled={resourcesLoading}
-                  className="text-xs h-7"
-                >
-                  Refresh
-                </Button>
-              </CardHeader>
-              <CardContent className="px-5 pb-5 space-y-5">
-                {resources.map((rm) => (
-                  <div key={rm.role}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-xs font-semibold text-slate-700">{rm.role}</span>
-                      <span className="text-[10px] text-slate-400 font-medium">
-                        {rm.fte >= 1 ? `${rm.fte}× 100%` : `${Math.round(rm.fte * 100)}%`}
-                      </span>
-                      {rm.candidates.length === 0 && (
-                        <span className="text-[10px] text-amber-600 ml-1">No internal candidates — consider hire</span>
-                      )}
-                    </div>
-                    {rm.candidates.length > 0 && (
-                      <div className="rounded-lg border overflow-hidden">
-                        <table className="w-full text-xs">
-                          <thead>
-                            <tr className="bg-slate-50 border-b">
-                              <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide w-24">Emp ID</th>
-                              <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Name</th>
-                              <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide hidden sm:table-cell">Role / COE</th>
-                              <th className="text-center px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide w-16">Score</th>
-                              <th className="text-center px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide w-20">Available</th>
-                              <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Recommendation</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y">
-                            {rm.candidates.map((c) => {
-                              const signalColor =
-                                c.signal === "REDEPLOY"
-                                  ? "text-emerald-700 bg-emerald-50 border-emerald-200"
-                                  : c.signal === "PARTIAL_HIRE"
-                                  ? "text-amber-700 bg-amber-50 border-amber-200"
-                                  : "text-red-700 bg-red-50 border-red-200";
-                              const hasRisk = c.riskFlags.length > 0;
-                              return (
-                                <tr key={c.employeeId} className={`${hasRisk ? "bg-amber-50/30" : "bg-white"} hover:bg-slate-50/60 transition-colors`}>
-                                  <td className="px-3 py-2.5 font-mono font-semibold text-slate-700">{c.employeeCode}</td>
-                                  <td className="px-3 py-2.5">
-                                    <span className="font-medium text-slate-800">{c.name}</span>
-                                    {hasRisk && (
-                                      <span className="ml-1.5 text-[9px] text-amber-600 font-semibold uppercase">
-                                        {c.riskFlags.slice(0, 2).join(" · ")}
-                                      </span>
-                                    )}
-                                  </td>
-                                  <td className="px-3 py-2.5 text-slate-500 hidden sm:table-cell">
-                                    {c.jobName ?? c.designationName ?? "—"}
-                                    {c.coeName && <span className="text-slate-400 ml-1">· {c.coeName}</span>}
-                                  </td>
-                                  <td className="px-3 py-2.5 text-center">
-                                    <span className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-bold border ${signalColor}`}>
-                                      {c.matchScore}
-                                    </span>
-                                  </td>
-                                  <td className="px-3 py-2.5 text-center text-slate-600 font-medium">{c.availableFTE}%</td>
-                                  <td className="px-3 py-2.5 text-slate-600 leading-snug max-w-xs">{c.recommendation}</td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      )}
-
-      {/* Pre-run role panels (always visible, all zeroes) */}
-      {!narrative && !loading && (
+      {/* ── Pre-run role panels (all zeroes) ─────────────────────── */}
+      {!hasResults && !loading && (
         <Card className="border-0 shadow-sm">
           <CardHeader className="px-5 py-3 pb-2">
             <CardTitle className="text-sm font-semibold text-slate-700">
               Role Allocation
               <span className="ml-2 text-xs font-normal text-muted-foreground">
-                — run the simulation to see percentages
+                — run the simulation to see allocations
               </span>
             </CardTitle>
           </CardHeader>
@@ -658,6 +534,268 @@ export function SimulatorClient() {
                 loading={false}
               />
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Post-run results grid ────────────────────────────────── */}
+      {(hasResults || loading) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Left: Historical Baseline */}
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="px-5 py-3 pb-2">
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-sm font-semibold text-slate-700">Historical Baseline</CardTitle>
+                {!loading && (
+                  <span className="text-xs text-muted-foreground">
+                    {baseline ? "— exact match found" : "— no match for this combination"}
+                  </span>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="px-5 pb-5">
+              {loading ? (
+                <div className="space-y-2">
+                  {[...Array(6)].map((_, i) => (
+                    <Skeleton key={i} className="h-4 w-full rounded" />
+                  ))}
+                </div>
+              ) : baseline ? (
+                <BaselinePanel baseline={baseline} />
+              ) : (
+                <div className="rounded-lg border border-dashed border-slate-200 p-6 text-center">
+                  <p className="text-xs text-muted-foreground">
+                    No historical match for{" "}
+                    <span className="font-medium">
+                      {projectType} · {phase || "any phase"} · {criticality || "any criticality"}
+                    </span>.
+                    <br />
+                    The AI recommendation uses the nearest reference pattern.
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Right: AI Recommendation */}
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="px-5 py-3 pb-2">
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-sm font-semibold text-slate-700">AI Recommendation</CardTitle>
+                {!loading && totalHeadcount !== null && totalHeadcount > 0 && (
+                  <Badge variant="outline" className="text-[10px] text-violet-700 border-violet-200 bg-violet-50 h-5">
+                    {totalHeadcount} headcount
+                  </Badge>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="px-5 pb-5 space-y-3">
+              {narrative && !loading && (
+                <div className="bg-violet-50 border border-violet-100 rounded-lg px-4 py-3">
+                  <p className="text-xs font-semibold text-violet-700 mb-1 uppercase tracking-wide">
+                    Rationale
+                  </p>
+                  <p className="text-xs text-slate-700 leading-relaxed">{narrative}</p>
+                </div>
+              )}
+              <div className="grid grid-cols-1 gap-3">
+                <LocationPanel
+                  title="UK"
+                  flag="🇬🇧"
+                  roles={UK_ROLES}
+                  allocationMap={allocationMap}
+                  loading={loading}
+                  hideEmpty={!loading && hasResults}
+                />
+                <LocationPanel
+                  title="Chennai"
+                  flag="🇮🇳"
+                  roles={CHENNAI_ROLES}
+                  allocationMap={allocationMap}
+                  loading={loading}
+                  hideEmpty={!loading && hasResults}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* ── Find Resources section ───────────────────────────────── */}
+      {hasResults && !loading && hasActiveAllocations && (
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="px-5 py-3 pb-2">
+            <div className="flex items-start justify-between flex-wrap gap-3">
+              <div>
+                <CardTitle className="text-sm font-semibold text-slate-700">Find Available Resources</CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Search the talent pool for candidates matching the recommended roles.
+                </p>
+              </div>
+              <div className="flex items-end gap-3">
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+                    Based on
+                  </span>
+                  <ResourceModeToggle
+                    mode={resourceMode}
+                    onMode={(m) => {
+                      setResourceMode(m);
+                      setResources([]);
+                    }}
+                    hasBaseline={baseline !== null}
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  variant={resources.length === 0 ? "default" : "outline"}
+                  onClick={handleFindResources}
+                  disabled={resourcesLoading}
+                  className="h-9 px-4"
+                >
+                  {resourcesLoading
+                    ? "Searching…"
+                    : resources.length > 0
+                    ? "Refresh"
+                    : "Find Resources"}
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="px-5 pb-5">
+            {resourcesLoading && (
+              <div className="mt-1 space-y-3">
+                {[...Array(3)].map((_, i) => (
+                  <Skeleton key={i} className="h-20 w-full rounded-lg" />
+                ))}
+              </div>
+            )}
+
+            {!resourcesLoading && resources.length === 0 && (
+              <div className="py-6 text-center border border-dashed border-slate-200 rounded-lg">
+                <p className="text-xs text-muted-foreground">
+                  Select a source above and click{" "}
+                  <span className="font-medium">Find Resources</span> to search the talent pool.
+                </p>
+              </div>
+            )}
+
+            {!resourcesLoading && resources.length > 0 && (
+              <div className="space-y-5">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground pb-2 border-b">
+                  <span>Results from</span>
+                  <span
+                    className={`font-semibold ${
+                      resourceMode === "ai" ? "text-violet-700" : "text-blue-700"
+                    }`}
+                  >
+                    {resourceMode === "ai" ? "AI Recommendation" : "Historical Baseline"}
+                  </span>
+                  <span>allocations · top 5 per role</span>
+                </div>
+
+                {resources.map((rm) => (
+                  <div key={rm.role}>
+                    <div className="flex items-center gap-2 mb-2.5">
+                      <span className="text-xs font-semibold text-slate-800">{rm.role}</span>
+                      <Badge
+                        variant="outline"
+                        className={`text-[10px] h-4 border ${
+                          resourceMode === "ai"
+                            ? "text-violet-700 border-violet-200 bg-violet-50"
+                            : "text-blue-700 border-blue-200 bg-blue-50"
+                        }`}
+                      >
+                        {rm.fte >= 1 ? `${rm.fte}× 100%` : `${Math.round(rm.fte * 100)}%`}
+                      </Badge>
+                      {rm.candidates.length === 0 && (
+                        <span className="text-[10px] text-amber-600 font-medium">
+                          No internal candidates — consider external hire
+                        </span>
+                      )}
+                    </div>
+                    {rm.candidates.length > 0 && (
+                      <div className="rounded-lg border overflow-hidden">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="bg-slate-50 border-b">
+                              <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide w-24">
+                                Emp ID
+                              </th>
+                              <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+                                Name
+                              </th>
+                              <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide hidden sm:table-cell">
+                                Role / COE
+                              </th>
+                              <th className="text-center px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide w-16">
+                                Score
+                              </th>
+                              <th className="text-center px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide w-20">
+                                Available
+                              </th>
+                              <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+                                Recommendation
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {rm.candidates.map((c) => {
+                              const signalColor =
+                                c.signal === "REDEPLOY"
+                                  ? "text-emerald-700 bg-emerald-50 border-emerald-200"
+                                  : c.signal === "PARTIAL_HIRE"
+                                  ? "text-amber-700 bg-amber-50 border-amber-200"
+                                  : "text-red-700 bg-red-50 border-red-200";
+                              const hasRisk = c.riskFlags.length > 0;
+                              return (
+                                <tr
+                                  key={c.employeeId}
+                                  className={`${
+                                    hasRisk ? "bg-amber-50/30" : "bg-white"
+                                  } hover:bg-slate-50/60 transition-colors`}
+                                >
+                                  <td className="px-3 py-2.5 font-mono font-semibold text-slate-700">
+                                    {c.employeeCode}
+                                  </td>
+                                  <td className="px-3 py-2.5">
+                                    <span className="font-medium text-slate-800">{c.name}</span>
+                                    {hasRisk && (
+                                      <span className="ml-1.5 text-[9px] text-amber-600 font-semibold uppercase">
+                                        {c.riskFlags.slice(0, 2).join(" · ")}
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2.5 text-slate-500 hidden sm:table-cell">
+                                    {c.jobName ?? c.designationName ?? "—"}
+                                    {c.coeName && (
+                                      <span className="text-slate-400 ml-1">· {c.coeName}</span>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2.5 text-center">
+                                    <span
+                                      className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-bold border ${signalColor}`}
+                                    >
+                                      {c.matchScore}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-2.5 text-center text-slate-600 font-medium">
+                                    {c.availableFTE}%
+                                  </td>
+                                  <td className="px-3 py-2.5 text-slate-600 leading-snug max-w-xs">
+                                    {c.recommendation}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
