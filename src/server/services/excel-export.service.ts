@@ -938,6 +938,9 @@ function scoreEmployee(
     previousClients,
     totalProjects: distinctProjectCount,
     riskFlags,
+    trainingReadiness: emp.competencies.length > 0
+      ? Math.round((emp.competencies.reduce((s, c) => s + c.score, 0) / emp.competencies.length / 5) * 100)
+      : 0,
     // v2 extensions
     experienceScore,
     coeAlignmentScore,

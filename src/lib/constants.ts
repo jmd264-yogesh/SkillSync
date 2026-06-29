@@ -108,6 +108,74 @@ export const MATCH_WEIGHTS_V2 = {
   coeAlignment: 0.04, // employee COE matches project skillset/solution domain
 } as const;
 
+// ─── Resourcing CoLab Enhancements (WI-008) ──────────────────
+
+export const SOLUTION_PRIORITY: Record<string, number> = {
+  "Customer":             1,
+  "Operations":           2,
+  "Finance":              3,
+  "Sales":                4,
+  "People":               5,
+  "Full Stack":           6,
+  "TechOps":              7,
+  "Managed Service":      8,
+  "Value Creation":       9,
+  "Platform Engineering": 10,
+  "Migration":            11,
+  "Networking":           12,
+  "Lead Scoring":         13,
+  "Churn Prediction":     14,
+  "Design & Discovery":   15,
+  "Pricing Optimization": 16,
+  "Web Scraping":         17,
+} as const;
+
+export const SOLUTION_TYPES = Object.keys(SOLUTION_PRIORITY) as string[];
+
+export const SERVICE_LINES = [
+  "Due Diligence",
+  "Data Advisory",
+  "Core Reporting",
+  "Value Creation",
+  "Exit Support",
+  "Managed Service",
+] as const;
+
+export type ServiceLine = (typeof SERVICE_LINES)[number];
+
+export const CLIENT_TIER_BOOST: Record<string, number> = {
+  GOLD: 10,
+  SILVER: 5,
+  BRONZE: 0,
+} as const;
+
+export const CLIENT_TIER_LABELS: Record<string, string> = {
+  GOLD: "Gold",
+  SILVER: "Silver",
+  BRONZE: "Bronze",
+} as const;
+
+// Deal stage → confidence percentage
+export const CONFIDENCE_BY_DEAL_STAGE: Record<string, number> = {
+  LEAD:        20,
+  PROPOSAL:    20,
+  SOW_PENDING: 40,
+  SOW_SIGNED:  80,
+  ACTIVE:      100,
+  RAMP_DOWN:   100,
+  CLOSED:      0,
+} as const;
+
+// Matching thresholds
+export const HIRING_LEAD_TIME_MONTHS = 6;
+export const UNDER_UTILIZATION_THRESHOLD = 0.85;
+
+export const TRAINING_READINESS_LABELS = {
+  HIGH:   { min: 80, label: "Project Ready",     color: "text-green-700 bg-green-50 border-green-200" },
+  MEDIUM: { min: 60, label: "Mostly Ready",      color: "text-amber-700 bg-amber-50 border-amber-200" },
+  LOW:    { min: 0,  label: "Needs Development", color: "text-red-700 bg-red-50 border-red-200" },
+} as const;
+
 export const ROLE_PERMISSIONS = {
   ADMIN: [
     "manage:coe",

@@ -12,9 +12,50 @@ import { cn } from "@/lib/utils";
 import {
   Users, CheckCircle2, AlertTriangle, XCircle,
   Briefcase, MapPin, Shield, Star, Clock, Calendar, ChevronDown, ChevronUp, User,
+  Layers, GraduationCap,
 } from "lucide-react";
 import type { PipelineRequest } from "@prisma/client";
 import type { MatchResult, RiskFlag } from "@/server/services/matching.service";
+import { CLIENT_TIER_LABELS, TRAINING_READINESS_LABELS, CONFIDENCE_BY_DEAL_STAGE, SOLUTION_PRIORITY, HIRING_LEAD_TIME_MONTHS } from "@/lib/constants";
+
+// ─── Pure helpers (no server imports) ────────────────────────
+
+function getConfidence(dealStage: string | null | undefined, sowSigned: boolean): number {
+  if (sowSigned) return 80;
+  if (!dealStage) return 20;
+  const stage = dealStage.toUpperCase().replace(/\s+/g, "_");
+  return CONFIDENCE_BY_DEAL_STAGE[stage] ?? 20;
+}
+
+function getSolutionPriority(solution: string | null | undefined): number {
+  if (!solution) return 99;
+  return SOLUTION_PRIORITY[solution.trim()] ?? 99;
+}
+
+function getMonthsUntilStart(likelyStart: Date | null | undefined): number | null {
+  if (!likelyStart) return null;
+  const months = (new Date(likelyStart).getTime() - Date.now()) / (1000 * 60 * 60 * 24 * 30.44);
+  return Math.round(months * 10) / 10;
+}
+
+function getTrainingReadinessConfig(score: number) {
+  if (score >= TRAINING_READINESS_LABELS.HIGH.min) return TRAINING_READINESS_LABELS.HIGH;
+  if (score >= TRAINING_READINESS_LABELS.MEDIUM.min) return TRAINING_READINESS_LABELS.MEDIUM;
+  return TRAINING_READINESS_LABELS.LOW;
+}
+
+// ─── New badge components ────────────────────────────────────
+
+function TrainingReadinessBadge({ score }: { score: number }) {
+  if (score === 0) return null;
+  const cfg = getTrainingReadinessConfig(score);
+  return (
+    <Badge variant="outline" className={cn("text-[10px] px-1.5 py-0", cfg.color)}>
+      <GraduationCap className="h-2.5 w-2.5 mr-0.5" />
+      {cfg.label} ({score})
+    </Badge>
+  );
+}
 
 const RISK_CONFIG: Record<RiskFlag, { label: string; color: string }> = {
   LEAVER:             { label: "On Notice",        color: "bg-red-50 text-red-700 border-red-200" },
@@ -69,6 +110,7 @@ function CandidateCard({ result, rank }: { result: MatchResult; rank: number }) 
                     {RISK_CONFIG[f].label}
                   </Badge>
                 ))}
+                <TrainingReadinessBadge score={result.trainingReadiness} />
               </div>
               <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground flex-wrap">
                 {result.jobName && (
@@ -129,10 +171,13 @@ function CandidateCard({ result, rank }: { result: MatchResult; rank: number }) 
 
         {/* Score bars */}
         <div className="grid grid-cols-2 gap-x-6 gap-y-2">
-          <ScoreBar label="Technical Skill"   value={result.skillScore}       color="bg-blue-500" />
-          <ScoreBar label="Competency"        value={result.competencyScore}  color="bg-violet-500" />
-          <ScoreBar label="Availability"      value={result.availabilityFit}  color="bg-green-500" />
-          <ScoreBar label="Evidence / Track"  value={result.evidenceStrength} color="bg-amber-500" />
+          <ScoreBar label="Technical Skill"      value={result.skillScore}         color="bg-blue-500" />
+          <ScoreBar label="Competency"           value={result.competencyScore}    color="bg-violet-500" />
+          <ScoreBar label="Availability"         value={result.availabilityFit}    color="bg-green-500" />
+          <ScoreBar label="Evidence / Track"     value={result.evidenceStrength}   color="bg-amber-500" />
+          {result.trainingReadiness > 0 && (
+            <ScoreBar label="Training Readiness" value={result.trainingReadiness}  color="bg-teal-500" />
+          )}
         </div>
 
         {/* Previous clients */}
@@ -276,48 +321,90 @@ export function MatchClient({ pipelineRequests }: MatchClientProps) {
         </CardContent>
       </Card>
 
-      {/* Selected request context - project type + start date + cluster */}
-      {selected && (
-        <Card className="border-0 shadow-sm bg-slate-50">
-          <CardContent className="px-4 py-3">
-            <div className="flex flex-wrap gap-2 items-center text-xs">
-              <span className="font-semibold text-slate-800">
-                {selected.client ?? "Unknown client"}
-              </span>
-              {selected.requestType && (
-                <Badge variant="outline" className="text-[11px]">
-                  Type: {selected.requestType}
-                </Badge>
-              )}
-              {selected.likelyStart && (
-                <Badge variant="outline" className="text-[11px]">
-                  Start: {new Date(selected.likelyStart).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-                </Badge>
-              )}
-              {selected.numberOfWeeks && (
-                <Badge variant="outline" className="text-[11px]">
-                  {selected.numberOfWeeks}w duration
-                </Badge>
-              )}
-              {selected.cluster && (
-                <Badge variant="outline" className="text-[11px]">
-                  Cluster {selected.cluster}
-                </Badge>
-              )}
-              {selected.sowSigned && (
-                <Badge variant="outline" className="text-[11px] bg-green-50 text-green-700 border-green-200">
-                  SOW Signed ✓
-                </Badge>
-              )}
-              {selected.skillset && (
-                <span className="text-muted-foreground truncate max-w-xs" title={selected.skillset}>
-                  Skills: {selected.skillset}
+      {/* Selected request context */}
+      {selected && (() => {
+        const confidence = getConfidence(selected.dealStage, selected.sowSigned);
+        const solPriority = getSolutionPriority(selected.solution);
+        const monthsUntil = getMonthsUntilStart(selected.likelyStart);
+        const hiringAlert = monthsUntil !== null && monthsUntil > 0 && monthsUntil < HIRING_LEAD_TIME_MONTHS;
+        const confidenceColor =
+          confidence >= 80 ? "bg-green-50 text-green-700 border-green-200"
+          : confidence >= 40 ? "bg-amber-50 text-amber-700 border-amber-200"
+          : "bg-red-50 text-red-700 border-red-200";
+        const tierColor: Record<string, string> = {
+          GOLD: "bg-yellow-50 text-yellow-700 border-yellow-300",
+          SILVER: "bg-slate-50 text-slate-600 border-slate-300",
+          BRONZE: "bg-orange-50 text-orange-700 border-orange-200",
+        };
+        return (
+          <div className="space-y-2">
+            <Card className="border-0 shadow-sm bg-slate-50">
+              <CardContent className="px-4 py-3">
+                <div className="flex flex-wrap gap-2 items-center text-xs">
+                  <span className="font-semibold text-slate-800">
+                    {selected.client ?? "Unknown client"}
+                  </span>
+                  <Badge variant="outline" className={cn("text-[11px]", confidenceColor)}>
+                    {confidence}% confidence
+                  </Badge>
+                  {selected.clientTier && (
+                    <Badge variant="outline" className={cn("text-[11px]", tierColor[selected.clientTier] ?? "")}>
+                      <Star className="h-2.5 w-2.5 mr-0.5" />
+                      {CLIENT_TIER_LABELS[selected.clientTier] ?? selected.clientTier}
+                    </Badge>
+                  )}
+                  {selected.solution && (
+                    <Badge variant="outline" className="text-[11px] bg-blue-50 text-blue-700 border-blue-200">
+                      <Layers className="h-2.5 w-2.5 mr-0.5" />
+                      #{solPriority !== 99 ? solPriority : "?"} {selected.solution}
+                    </Badge>
+                  )}
+                  {selected.requestType && (
+                    <Badge variant="outline" className="text-[11px]">
+                      Type: {selected.requestType}
+                    </Badge>
+                  )}
+                  {selected.likelyStart && (
+                    <Badge variant="outline" className="text-[11px]">
+                      Start: {new Date(selected.likelyStart).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                    </Badge>
+                  )}
+                  {selected.numberOfWeeks && (
+                    <Badge variant="outline" className="text-[11px]">
+                      {selected.numberOfWeeks}w duration
+                    </Badge>
+                  )}
+                  {selected.cluster && (
+                    <Badge variant="outline" className="text-[11px]">
+                      Cluster {selected.cluster}
+                    </Badge>
+                  )}
+                  {selected.sowSigned && (
+                    <Badge variant="outline" className="text-[11px] bg-green-50 text-green-700 border-green-200">
+                      SOW Signed ✓
+                    </Badge>
+                  )}
+                  {selected.skillset && (
+                    <span className="text-muted-foreground truncate max-w-xs" title={selected.skillset}>
+                      Skills: {selected.skillset}
+                    </span>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+            {hiringAlert && (
+              <div className="flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 px-4 py-2.5 text-xs text-red-800">
+                <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-red-600" />
+                <span>
+                  <span className="font-semibold">Hiring lead-time alert: </span>
+                  Start date is {monthsUntil!.toFixed(1)} months away — under the 6-month hiring threshold.
+                  Engage Talent Acquisition immediately if no internal candidates match.
                 </span>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Loading */}
       {loading && (
@@ -333,6 +420,15 @@ export function MatchClient({ pipelineRequests }: MatchClientProps) {
 
       {!loading && results && results.length > 0 && (
         <div className="space-y-3">
+          {/* Internal-first policy banner */}
+          <div className="flex items-center gap-2 rounded-md bg-green-50 border border-green-200 px-3 py-2 text-xs text-green-800">
+            <CheckCircle2 className="h-3.5 w-3.5 text-green-600 shrink-0" />
+            <span>
+              <span className="font-semibold">Internal resources first.</span>{" "}
+              Candidates are sorted by availability signal (Deploy → Partial → Hire). External hiring is only recommended when no internal match exists.
+            </span>
+          </div>
+
           {/* Controls + risk summary */}
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-3">

@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { MATCH_WEIGHTS } from "@/lib/constants";
+import { MATCH_WEIGHTS, CLIENT_TIER_BOOST } from "@/lib/constants";
 
 export type MatchSignal = "REDEPLOY" | "HIRE" | "PARTIAL_HIRE";
 
@@ -33,6 +33,7 @@ export interface MatchResult {
   billabilityFit: number;
   evidenceStrength: number;
   matchScore: number;
+  trainingReadiness: number;  // 0–100 derived from avg competency scores
   // Skill details
   skillBreakdown: SkillBreakdown[];
   unmetSkills: string[];
@@ -58,8 +59,11 @@ export async function computeMatchRanking(params: {
   windowStart?: Date;
   windowEnd?: Date;
   topN?: number;
+  clientTier?: string;       // "GOLD" | "SILVER" | "BRONZE" — boosts availability score
+  internalFirst?: boolean;   // sort REDEPLOY→PARTIAL_HIRE→HIRE after scoring
 }): Promise<MatchResult[]> {
-  const { requiredSkills, canonicalRoles, windowStart, windowEnd, topN = 20 } = params;
+  const { requiredSkills, canonicalRoles, windowStart, windowEnd, topN = 20, clientTier, internalFirst = true } = params;
+  const tierBoost = CLIENT_TIER_BOOST[clientTier ?? ""] ?? 0;
   const hasSkillFilter = requiredSkills.length > 0;
   const hasRoleFilter = canonicalRoles && canonicalRoles.length > 0;
   const skillIds = requiredSkills.map((s) => s.skillId);
@@ -138,10 +142,16 @@ export async function computeMatchRanking(params: {
       ? Math.round((coveragePct * 0.6 + depthPct * 0.4) * 100)
       : Math.round((emp.employeeSkills.length > 0 ? Math.min(emp.employeeSkills.length / 5, 1) : 0.3) * 100);
 
-    // ── Competency Score ─────────────────────────────────────
+    // ── Competency Score & Training Readiness ─────────────────
+    const rawCompetencyAvg = emp.competencies.length > 0
+      ? emp.competencies.reduce((s, c) => s + c.score, 0) / emp.competencies.length
+      : 0;
     const competencyScore = emp.competencies.length > 0
-      ? Math.round((emp.competencies.reduce((s, c) => s + c.score, 0) / emp.competencies.length / 5) * 100)
+      ? Math.round((rawCompetencyAvg / 5) * 100)
       : 50;
+    const trainingReadiness = emp.competencies.length > 0
+      ? Math.round((rawCompetencyAvg / 5) * 100)
+      : 0;
 
     // ── Availability Fit ─────────────────────────────────────
     const activeAllocations = emp.allocations.filter((a) => a.project.status !== "COMPLETED");
@@ -159,7 +169,8 @@ export async function computeMatchRanking(params: {
     const underUtilized = snapshots.length >= 2 && nominalAllocPct > 0.1 && avgUtil < nominalAllocPct * 0.7;
     const spareCapacity = underUtilized ? Math.max(0, nominalAllocPct - avgUtil) : 0;
     const availableFTE = Math.min(1, Math.max(0, 1 - avgUtil) + spareCapacity);
-    const availabilityFit = Math.round(Math.min(availableFTE, 1) * 100);
+    // Apply client tier boost: Gold clients get priority access to available resources
+    const availabilityFit = Math.min(100, Math.round(Math.min(availableFTE, 1) * 100) + tierBoost);
 
     // ── Billability Fit ──────────────────────────────────────
     const avgBillable = snapshots.length > 0
@@ -268,6 +279,7 @@ export async function computeMatchRanking(params: {
       billabilityFit,
       evidenceStrength,
       matchScore,
+      trainingReadiness,
       skillBreakdown: breakdown,
       unmetSkills: unmet,
       availableFTE,
@@ -283,7 +295,17 @@ export async function computeMatchRanking(params: {
     };
   });
 
+  // Internal-first: sort by signal tier first (REDEPLOY > PARTIAL_HIRE > HIRE),
+  // then by matchScore descending within each tier.
+  const SIGNAL_ORDER: Record<MatchSignal, number> = { REDEPLOY: 0, PARTIAL_HIRE: 1, HIRE: 2 };
+
   return results
-    .sort((a, b) => b.matchScore - a.matchScore)
+    .sort((a, b) => {
+      if (internalFirst) {
+        const tierDiff = SIGNAL_ORDER[a.signal] - SIGNAL_ORDER[b.signal];
+        if (tierDiff !== 0) return tierDiff;
+      }
+      return b.matchScore - a.matchScore;
+    })
     .slice(0, topN);
 }

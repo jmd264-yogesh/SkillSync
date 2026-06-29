@@ -1,7 +1,9 @@
 import { Suspense } from "react";
 import { getAllocationReport } from "@/server/actions/allocation-report";
+import { getUnderUtilizedResources } from "@/server/actions/pipeline";
 import { PageHeader } from "@/components/shared/page-header";
 import { DecisionCard } from "@/components/shared/decision-card";
+import { BenchResourcesPanel } from "@/components/shared/bench-resources-panel";
 import { RollingOffStrip } from "./rolling-off-strip";
 import { AllocationTableClient } from "./alloc-table-client";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,7 +11,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 async function AllocationTable() {
-  const rows = await getAllocationReport({});
+  const [rows, underUtilized] = await Promise.all([
+    getAllocationReport({}),
+    getUnderUtilizedResources().catch(() => []),
+  ]);
 
   if (rows.length === 0) {
     return (
@@ -48,6 +53,9 @@ async function AllocationTable() {
 
   return (
     <div className="space-y-4">
+      {/* Bench & Under-Utilized panel — shown before allocating externally */}
+      <BenchResourcesPanel employees={underUtilized} />
+
       {/* P1 - Decision line */}
       <DecisionCard
         headline={decisionHeadline}
