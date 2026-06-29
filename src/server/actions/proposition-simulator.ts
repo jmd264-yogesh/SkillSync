@@ -158,6 +158,7 @@ export async function simulateProposition(input: {
   phase?: string;
   criticality?: string;
   sourceSystems?: string[];
+  techStack?: string[];
   description?: string;
 }): Promise<PropositionSimulatorResult> {
   const session = await auth();
@@ -204,6 +205,13 @@ Use these FTE ratios as your primary anchor when computing percentage allocation
         `(Senior Software Engineer, Software Engineer, Solutions Enabler, Technical Solutions Architect).`
       : "";
 
+  const techStackNote =
+    input.techStack && input.techStack.length > 0
+      ? `Required tech stack: ${input.techStack.join(", ")}.
+These tools drive role selection: Chennai technical roles (SW, SSE, TA, SE) implement and integrate them.
+UK consulting roles use business-facing tools; they do not change headcount based on tech stack choices.`
+      : "";
+
   const descriptionNote =
     input.description && input.description.trim().length > 0
       ? `\nAdditional project context:\n<context>\n${input.description.trim()}\n</context>\nUse this context to refine the allocation. Reflect any adjustments in the narrative.`
@@ -219,7 +227,8 @@ Start Date: ${input.startDate}
 Duration: ${input.weeks} weeks
 
 ${baselineNote}
-${sourceNote}${descriptionNote}
+${sourceNote}
+${techStackNote}${descriptionNote}
 
 Return headcount values per role (1.0 = one person full-time, 0.5 = half-time, etc.)
 matching the historical reference table as closely as possible.
@@ -297,6 +306,7 @@ function deriveRecommendation(matchScore: number, availableFTE: number, signal: 
 
 export async function findResourcesForSimulation(
   allocations: { role: string; fte: number }[],
+  techStack?: { skillId: string; skillName: string; requiredLevel: number }[],
 ): Promise<RoleResourceMatch[]> {
   const session = await auth();
   if (!session) throw new UnauthorizedError();
@@ -307,7 +317,7 @@ export async function findResourcesForSimulation(
   const results = await Promise.all(
     activeRoles.map(async (alloc) => {
       const candidates = await computeMatchRanking({
-        requiredSkills: [],
+        requiredSkills: techStack ?? [],
         canonicalRoles: [alloc.role],
         topN: 5,
         internalFirst: true,

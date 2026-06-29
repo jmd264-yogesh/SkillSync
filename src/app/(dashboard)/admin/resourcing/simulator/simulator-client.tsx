@@ -161,6 +161,84 @@ function BaselinePanel({ baseline }: { baseline: BaselineAllocation }) {
   );
 }
 
+// ── Tech stack picker ─────────────────────────────────────────────────────────
+
+const CATEGORY_LABELS: Record<string, string> = {
+  SKILL:         "Skills",
+  FRAMEWORK:     "Frameworks",
+  CONCEPT:       "Concepts",
+  TOOL:          "Tools",
+  CERTIFICATION: "Certifications",
+};
+
+function TechStackPicker({
+  skills,
+  selected,
+  onChange,
+}: {
+  skills: { id: string; name: string; category: string }[];
+  selected: { skillId: string; skillName: string }[];
+  onChange: (updated: { skillId: string; skillName: string }[]) => void;
+}) {
+  const selectedIds = new Set(selected.map((s) => s.skillId));
+
+  function toggle(skill: { id: string; name: string }) {
+    if (selectedIds.has(skill.id)) {
+      onChange(selected.filter((s) => s.skillId !== skill.id));
+    } else {
+      onChange([...selected, { skillId: skill.id, skillName: skill.name }]);
+    }
+  }
+
+  // Group by category in a consistent order
+  const categoryOrder = ["TOOL", "FRAMEWORK", "SKILL", "CONCEPT", "CERTIFICATION"];
+  const grouped = categoryOrder.reduce<Record<string, typeof skills>>((acc, cat) => {
+    const items = skills.filter((s) => s.category === cat);
+    if (items.length > 0) acc[cat] = items;
+    return acc;
+  }, {});
+
+  return (
+    <div className="mt-2.5 space-y-3">
+      {Object.entries(grouped).map(([cat, catSkills]) => (
+        <div key={cat}>
+          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+            {CATEGORY_LABELS[cat] ?? cat}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {catSkills.map((s) => {
+              const active = selectedIds.has(s.id);
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => toggle(s)}
+                  className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                    active
+                      ? "bg-indigo-600 text-white border-indigo-600"
+                      : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600"
+                  }`}
+                >
+                  {s.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+      {selected.length > 0 && (
+        <button
+          type="button"
+          onClick={() => onChange([])}
+          className="text-xs px-2.5 py-1 rounded-full border border-dashed border-slate-300 text-slate-400 hover:text-red-500 hover:border-red-300 transition-colors"
+        >
+          Clear all
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ── Resource mode toggle ──────────────────────────────────────────────────────
 
 type ResourceMode = "ai" | "baseline";
@@ -204,7 +282,11 @@ function ResourceModeToggle({
   );
 }
 
-export function SimulatorClient() {
+interface SimulatorClientProps {
+  skills: { id: string; name: string; category: string }[];
+}
+
+export function SimulatorClient({ skills }: SimulatorClientProps) {
   const [proposition, setProposition] = useState<ServiceLine | "">("");
   const [projectType, setProjectType] = useState("");
   const [phase, setPhase] = useState<EngagementPhase | "">("");
@@ -214,6 +296,8 @@ export function SimulatorClient() {
 
   const [sourceSystems, setSourceSystems] = useState<SourceSystem[]>([]);
   const [showSystems, setShowSystems] = useState(false);
+  const [techStack, setTechStack] = useState<{ skillId: string; skillName: string }[]>([]);
+  const [showTechStack, setShowTechStack] = useState(false);
   const [description, setDescription] = useState("");
   const [showDescription, setShowDescription] = useState(false);
 
@@ -252,6 +336,7 @@ export function SimulatorClient() {
     setAllocations([]);
     setBaseline(null);
     setResources([]);
+    setTechStack([]);
   }
 
   async function handleSimulate() {
@@ -269,6 +354,7 @@ export function SimulatorClient() {
         phase: phase || undefined,
         criticality: criticality || undefined,
         sourceSystems: sourceSystems.length > 0 ? sourceSystems : undefined,
+        techStack: techStack.length > 0 ? techStack.map((t) => t.skillName) : undefined,
         description: description.trim() || undefined,
       });
       setAllocations(data.allocations);
@@ -291,8 +377,12 @@ export function SimulatorClient() {
     }
     if (source.length === 0) return;
     setResourcesLoading(true);
+    const skillsForMatching =
+      techStack.length > 0
+        ? techStack.map((t) => ({ skillId: t.skillId, skillName: t.skillName, requiredLevel: 3 }))
+        : undefined;
     try {
-      const data = await findResourcesForSimulation(source);
+      const data = await findResourcesForSimulation(source, skillsForMatching);
       setResources(data);
     } catch {
       // silently ignore — show empty state
@@ -466,6 +556,32 @@ export function SimulatorClient() {
                   </button>
                 )}
               </div>
+            )}
+          </div>
+
+          {/* Tech Stack */}
+          <div className="mt-3 border-t pt-3">
+            <button
+              type="button"
+              onClick={() => setShowTechStack((v) => !v)}
+              className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 transition-colors"
+            >
+              <span className="font-medium">Tech Stack</span>
+              <span className="text-slate-400">(optional — improves candidate matching)</span>
+              <span className="ml-1 text-slate-400">{showTechStack ? "▲" : "▼"}</span>
+              {techStack.length > 0 && (
+                <span className="ml-1 bg-indigo-100 text-indigo-700 text-[10px] font-semibold px-1.5 py-0.5 rounded-full">
+                  {techStack.length} selected
+                </span>
+              )}
+            </button>
+
+            {showTechStack && (
+              <TechStackPicker
+                skills={skills}
+                selected={techStack}
+                onChange={setTechStack}
+              />
             )}
           </div>
 
@@ -682,7 +798,7 @@ export function SimulatorClient() {
 
             {!resourcesLoading && resources.length > 0 && (
               <div className="space-y-5">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground pb-2 border-b">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground pb-2 border-b">
                   <span>Results from</span>
                   <span
                     className={`font-semibold ${
@@ -692,6 +808,19 @@ export function SimulatorClient() {
                     {resourceMode === "ai" ? "AI Recommendation" : "Historical Baseline"}
                   </span>
                   <span>allocations · top 5 per role</span>
+                  {techStack.length > 0 && (
+                    <span className="ml-1 flex flex-wrap gap-1">
+                      <span className="text-slate-400">· filtered by:</span>
+                      {techStack.map((t) => (
+                        <span
+                          key={t.skillId}
+                          className="bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-medium px-1.5 py-0.5 rounded-full"
+                        >
+                          {t.skillName}
+                        </span>
+                      ))}
+                    </span>
+                  )}
                 </div>
 
                 {resources.map((rm) => (
