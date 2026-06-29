@@ -1388,9 +1388,19 @@ export async function buildResourceExcel(opts: ExcelExportOptions = {}): Promise
       if (picked) break;
     }
 
-    // True pool exhaustion — recommend best available regardless (shared resource, flagged)
-    if (!picked && allScored.length > 0) {
-      picked = [...allScored].sort((a, b) => b.matchScore - a.matchScore)[0] ?? null;
+    // True pool exhaustion — all role-matching employees are already allocated.
+    // ONLY fall back to a shared resource when the role was recognised AND the pool was non-empty
+    // but every candidate had a ConflictTracker clash. If the pool was empty to begin with
+    // (no employees with the required role exist), do NOT pick a wrong-role employee — HIRE instead.
+    const anyRoleMatchExists = roleFiltered
+      ? allScored.some((m) => employeeMatchesRole(m.jobName, parsed.canonicalRoles))
+      : false;
+    if (!picked && anyRoleMatchExists) {
+      // All correct-role candidates are allocated — pick the best one as a shared resource (flagged)
+      const rolePool = allScored
+        .filter((m) => employeeMatchesRole(m.jobName, parsed.canonicalRoles))
+        .sort((a, b) => b.matchScore - a.matchScore);
+      picked = rolePool[0] ?? null;
       poolExhausted = true;
       if (picked && hardClaim) tracker.claim(picked.employeeId, windowStart, windowEnd);
     }
