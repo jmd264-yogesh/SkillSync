@@ -16,11 +16,11 @@ enum UserRole {
 }
 
 model User {
-  id             String    @id @default(uuid())
-  email          String    @unique
-  name           String
-  passwordHash   String    @map("password_hash")
-  role           UserRole  @default(EMPLOYEE)
+  id              String                   @id @default(uuid())
+  email           String                   @unique
+  name            String
+  passwordHash    String                   @map("password_hash")
+  role            UserRole                 @default(EMPLOYEE)
   employeeId      String?                  @unique @map("employee_id")
   employee        Employee?                @relation(fields: [employeeId], references: [id])
   reviewCycles    ReviewCycle[]
@@ -35,26 +35,26 @@ model User {
 // ─── Organization Structure ──────────────────────────────────
 
 model Coe {
-  id          String       @id @default(uuid())
-  name        String       @unique
+  id          String     @id @default(uuid())
+  name        String     @unique
   description String?
   employees   Employee[]
   coeSkills   CoeSkill[]
-  createdAt   DateTime     @default(now()) @map("created_at")
-  updatedAt   DateTime     @updatedAt @map("updated_at")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
 
   @@map("coes")
 }
 
 model Designation {
-  id                String              @id @default(uuid())
-  name              String              @unique
+  id                String             @id @default(uuid())
+  name              String             @unique
   level             Int
   description       String?
   employees         Employee[]
   designationSkills DesignationSkill[]
-  createdAt         DateTime            @default(now()) @map("created_at")
-  updatedAt         DateTime            @updatedAt @map("updated_at")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
 
   @@map("designations")
 }
@@ -73,31 +73,31 @@ model CompetencyLevel {
 // ─── Employee ────────────────────────────────────────────────
 
 model Employee {
-  id                String          @id @default(uuid())
-  employeeCode      String          @unique @map("employee_code")
-  name              String
-  email             String          @unique
-  weeklyCapacity    Float           @default(40) @map("weekly_capacity")
-  availableFrom     DateTime?       @map("available_from")
-  costRate          Float?          @map("cost_rate")
-  externalId        String?         @unique @map("external_id")
-  jobName           String?         @map("job_name")
-  department        String?
-  location          String?
-  dateOfJoin        DateTime?       @map("date_of_join")
-  dateOfResignation DateTime?       @map("date_of_resignation")
-  user              User?
-  coe             Coe?            @relation(fields: [coeId], references: [id])
-  coeId           String?         @map("coe_id")
-  designation     Designation?    @relation(fields: [designationId], references: [id])
-  designationId   String?         @map("designation_id")
-  manager         Employee?       @relation("ManagerReports", fields: [managerId], references: [id])
-  managerId       String?         @map("manager_id")
-  reportees       Employee[]      @relation("ManagerReports")
-  cluster         Cluster?        @relation(fields: [clusterId], references: [id])
-  clusterId       String?         @map("cluster_id")
-  employeeSkills  EmployeeSkill[]
-  evidences       Evidence[]
+  id                   String                   @id @default(uuid())
+  employeeCode         String                   @unique @map("employee_code")
+  name                 String
+  email                String                   @unique
+  weeklyCapacity       Float                    @default(40) @map("weekly_capacity")
+  availableFrom        DateTime?                @map("available_from")
+  costRate             Float?                   @map("cost_rate")
+  externalId           String?                  @unique @map("external_id")
+  jobName              String?                  @map("job_name")
+  department           String?
+  location             String?
+  dateOfJoin           DateTime?                @map("date_of_join")
+  dateOfResignation    DateTime?                @map("date_of_resignation")
+  user                 User?
+  coe                  Coe?                     @relation(fields: [coeId], references: [id])
+  coeId                String?                  @map("coe_id")
+  designation          Designation?             @relation(fields: [designationId], references: [id])
+  designationId        String?                  @map("designation_id")
+  manager              Employee?                @relation("ManagerReports", fields: [managerId], references: [id])
+  managerId            String?                  @map("manager_id")
+  reportees            Employee[]               @relation("ManagerReports")
+  cluster              Cluster?                 @relation(fields: [clusterId], references: [id])
+  clusterId            String?                  @map("cluster_id")
+  employeeSkills       EmployeeSkill[]
+  evidences            Evidence[]
   allocations          ProjectAllocation[]
   timesheets           Timesheet[]
   competencies         Competency[]
@@ -127,20 +127,19 @@ model Cluster {
   @@map("clusters")
 }
 
-
 // ─── Skills ──────────────────────────────────────────────────
 
 model Skill {
-  id                String              @id @default(uuid())
-  name              String              @unique
-  description       String?
-  category          SkillCategory       @default(SKILL)
+  id                  String                    @id @default(uuid())
+  name                String                    @unique
+  description         String?
+  category            SkillCategory             @default(SKILL)
   employeeSkills      EmployeeSkill[]
   coeSkills           CoeSkill[]
   designationSkills   DesignationSkill[]
   projectRequirements ProjectSkillRequirement[]
-  createdAt           DateTime            @default(now()) @map("created_at")
-  updatedAt           DateTime            @updatedAt @map("updated_at")
+  createdAt           DateTime                  @default(now()) @map("created_at")
+  updatedAt           DateTime                  @updatedAt @map("updated_at")
 
   @@map("skills")
 }
@@ -186,20 +185,20 @@ model DesignationSkill {
 // ─── Employee Skills & Validation ────────────────────────────
 
 model EmployeeSkill {
-  id                 String              @id @default(uuid())
-  employee           Employee            @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  employeeId         String              @map("employee_id")
-  skill              Skill               @relation(fields: [skillId], references: [id], onDelete: Cascade)
-  skillId            String              @map("skill_id")
-  selfAssessedLevel  Int                 @map("self_assessed_level")
-  validatedLevel     Int?                @map("validated_level")
-  status             SkillApprovalStatus @default(PENDING)
-  reviewComment      String?             @map("review_comment")
-  reviewedBy         String?             @map("reviewed_by")
-  reviewedAt         DateTime?           @map("reviewed_at")
-  evidences          Evidence[]
-  createdAt          DateTime            @default(now()) @map("created_at")
-  updatedAt          DateTime            @updatedAt @map("updated_at")
+  id                String              @id @default(uuid())
+  employee          Employee            @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employeeId        String              @map("employee_id")
+  skill             Skill               @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  skillId           String              @map("skill_id")
+  selfAssessedLevel Int                 @map("self_assessed_level")
+  validatedLevel    Int?                @map("validated_level")
+  status            SkillApprovalStatus @default(PENDING)
+  reviewComment     String?             @map("review_comment")
+  reviewedBy        String?             @map("reviewed_by")
+  reviewedAt        DateTime?           @map("reviewed_at")
+  evidences         Evidence[]
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
 
   @@unique([employeeId, skillId])
   @@map("employee_skills")
@@ -256,17 +255,17 @@ model LearningPath {
 }
 
 model LearningItem {
-  id             String          @id @default(uuid())
-  learningPath   LearningPath    @relation(fields: [learningPathId], references: [id], onDelete: Cascade)
-  learningPathId String          @map("learning_path_id")
+  id             String       @id @default(uuid())
+  learningPath   LearningPath @relation(fields: [learningPathId], references: [id], onDelete: Cascade)
+  learningPathId String       @map("learning_path_id")
   title          String
   description    String?
   type           LearningType
   url            String?
   duration       String?
   order          Int
-  createdAt      DateTime        @default(now()) @map("created_at")
-  updatedAt      DateTime        @updatedAt @map("updated_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
 
   @@map("learning_items")
 }
@@ -347,44 +346,45 @@ enum Billability {
 }
 
 model Project {
-  id                String                    @id @default(uuid())
-  name              String
-  description       String?
-  domain            String?
-  startDate         DateTime?                 @map("start_date")
-  endDate           DateTime?                 @map("end_date")
-  teamSize          Int?                      @map("team_size")
-  status               ProjectStatus             @default(ACTIVE)
-  category             ProjectCategory           @default(TACTICAL_BUILD) @map("category")
-  pipelineStage        PipelineStage             @default(ACTIVE) @map("pipeline_stage")
-  sowSigned            Boolean                   @default(false) @map("sow_signed")
-  sowSignedDate        DateTime?                 @map("sow_signed_date")
-  plannedEndDate       DateTime?                 @map("planned_end_date")
-  expectedStart        DateTime?                 @map("expected_start")
-  winProbability       Int?                      @map("win_probability")
-  clientPriority       Int?                      @map("client_priority")
-  fundType             String?                   @map("fund_type")
-  billRate             Float?                    @map("bill_rate")
-  techCoe              String?                   @map("tech_coe")
-  propositionCoe       String?                   @map("proposition_coe")
-  clientId             String?                   @map("client_id")
-  clientRef            Client?                   @relation(fields: [clientRefId], references: [id])
-  clientRefId          String?                   @map("client_ref_id")
-  actualEndDate        DateTime?                 @map("actual_end_date")
-  externalId           String?                   @unique @map("external_id")
-  projectKey           String?                   @map("project_key")
-  reporterExternalId   String?                   @map("reporter_external_id")
-  approverExternalId   String?                   @map("approver_external_id")
-  projectManagerId     String?                   @map("project_manager_id")
-  projectManager       Employee?                 @relation("ProjectManager", fields: [projectManagerId], references: [id])
-  skillRequirements    ProjectSkillRequirement[]
-  allocations          ProjectAllocation[]
-  timesheets           Timesheet[]
-  weeklyStatuses       WeeklyStatus[]
-  feedbackAssignments  FeedbackFormAssignment[]
-  experienceDocs       ProjectExperienceDoc[]
-  createdAt            DateTime                  @default(now()) @map("created_at")
-  updatedAt            DateTime                  @updatedAt @map("updated_at")
+  id                  String                    @id @default(uuid())
+  name                String
+  description         String?
+  domain              String?
+  startDate           DateTime?                 @map("start_date")
+  endDate             DateTime?                 @map("end_date")
+  teamSize            Int?                      @map("team_size")
+  status              ProjectStatus             @default(ACTIVE)
+  category            ProjectCategory           @default(TACTICAL_BUILD) @map("category")
+  pipelineStage       PipelineStage             @default(ACTIVE) @map("pipeline_stage")
+  sowSigned           Boolean                   @default(false) @map("sow_signed")
+  sowSignedDate       DateTime?                 @map("sow_signed_date")
+  plannedEndDate      DateTime?                 @map("planned_end_date")
+  expectedStart       DateTime?                 @map("expected_start")
+  winProbability      Int?                      @map("win_probability")
+  clientPriority      Int?                      @map("client_priority")
+  fundType            String?                   @map("fund_type")
+  billRate            Float?                    @map("bill_rate")
+  techCoe             String?                   @map("tech_coe")
+  propositionCoe      String?                   @map("proposition_coe")
+  clientId            String?                   @map("client_id")
+  clientRef           Client?                   @relation(fields: [clientRefId], references: [id])
+  clientRefId         String?                   @map("client_ref_id")
+  actualEndDate       DateTime?                 @map("actual_end_date")
+  externalId          String?                   @unique @map("external_id")
+  projectKey          String?                   @map("project_key")
+  reporterExternalId  String?                   @map("reporter_external_id")
+  approverExternalId  String?                   @map("approver_external_id")
+  projectManagerId    String?                   @map("project_manager_id")
+  projectManager      Employee?                 @relation("ProjectManager", fields: [projectManagerId], references: [id])
+  skillRequirements   ProjectSkillRequirement[]
+  allocations         ProjectAllocation[]
+  timesheets          Timesheet[]
+  weeklyStatuses      WeeklyStatus[]
+  feedbackAssignments FeedbackFormAssignment[]
+  experienceDocs      ProjectExperienceDoc[]
+  resourcingStatus    ProjectResourcingStatus?
+  createdAt           DateTime                  @default(now()) @map("created_at")
+  updatedAt           DateTime                  @updatedAt @map("updated_at")
 
   @@map("projects")
 }
@@ -406,21 +406,21 @@ model ProjectSkillRequirement {
 }
 
 model ProjectAllocation {
-  id           String      @id @default(uuid())
-  project      Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId    String      @map("project_id")
-  employee     Employee    @relation(fields: [employeeId], references: [id])
-  employeeId   String      @map("employee_id")
-  allocation        Float
-  role              String?
-  billability       Billability @default(BILLABLE) @map("billability")
-  resourcingStatus  String?     @map("resourcing_status")
-  externalId        String?     @unique @map("external_id")
-  startDate         DateTime?   @map("start_date")
-  endDate           DateTime?   @map("end_date")
-  plannedEndDate    DateTime?   @map("planned_end_date")
-  createdAt         DateTime    @default(now()) @map("created_at")
-  updatedAt         DateTime    @updatedAt @map("updated_at")
+  id               String      @id @default(uuid())
+  project          Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId        String      @map("project_id")
+  employee         Employee    @relation(fields: [employeeId], references: [id])
+  employeeId       String      @map("employee_id")
+  allocation       Float
+  role             String?
+  billability      Billability @default(BILLABLE) @map("billability")
+  resourcingStatus String?     @map("resourcing_status")
+  externalId       String?     @unique @map("external_id")
+  startDate        DateTime?   @map("start_date")
+  endDate          DateTime?   @map("end_date")
+  plannedEndDate   DateTime?   @map("planned_end_date")
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
 
   @@unique([projectId, employeeId])
   @@map("project_allocations")
@@ -462,41 +462,41 @@ enum ReviewCycleStatus {
 }
 
 model ReviewCycle {
-  id          String            @id @default(uuid())
+  id          String                   @id @default(uuid())
   name        String
-  startDate   DateTime          @map("start_date")
-  endDate     DateTime          @map("end_date")
-  status      ReviewCycleStatus @default(DRAFT)
-  createdById String            @map("created_by_id")
-  createdBy   User              @relation(fields: [createdById], references: [id])
+  startDate   DateTime                 @map("start_date")
+  endDate     DateTime                 @map("end_date")
+  status      ReviewCycleStatus        @default(DRAFT)
+  createdById String                   @map("created_by_id")
+  createdBy   User                     @relation(fields: [createdById], references: [id])
   forms       FeedbackForm[]
   assignments FeedbackFormAssignment[]
   summaries   FeedbackSummary[]
-  createdAt   DateTime          @default(now()) @map("created_at")
-  updatedAt   DateTime          @updatedAt @map("updated_at")
+  createdAt   DateTime                 @default(now()) @map("created_at")
+  updatedAt   DateTime                 @updatedAt @map("updated_at")
 
   @@map("review_cycles")
 }
 
 enum FeedbackFormType {
-  PM_FEEDBACK    // created by CDM/Manager, assigned to Project Managers
+  PM_FEEDBACK // created by CDM/Manager, assigned to Project Managers
   CDM_ASSESSMENT // created by HR/Admin, assigned to CDMs/Managers
-  HR_FEEDBACK    // created by HR/Admin, filled directly by HR
+  HR_FEEDBACK // created by HR/Admin, filled directly by HR
 }
 
 model FeedbackForm {
-  id            String                 @id @default(uuid())
+  id            String                   @id @default(uuid())
   title         String
   description   String?
-  formType      FeedbackFormType       @map("form_type")
-  reviewCycleId String                 @map("review_cycle_id")
-  reviewCycle   ReviewCycle            @relation(fields: [reviewCycleId], references: [id])
-  createdById   String                 @map("created_by_id")
-  createdBy     User                   @relation(fields: [createdById], references: [id])
+  formType      FeedbackFormType         @map("form_type")
+  reviewCycleId String                   @map("review_cycle_id")
+  reviewCycle   ReviewCycle              @relation(fields: [reviewCycleId], references: [id])
+  createdById   String                   @map("created_by_id")
+  createdBy     User                     @relation(fields: [createdById], references: [id])
   sections      FeedbackFormSection[]
   assignments   FeedbackFormAssignment[]
-  createdAt     DateTime               @default(now()) @map("created_at")
-  updatedAt     DateTime               @updatedAt @map("updated_at")
+  createdAt     DateTime                 @default(now()) @map("created_at")
+  updatedAt     DateTime                 @updatedAt @map("updated_at")
 
   @@map("feedback_forms")
 }
@@ -517,20 +517,20 @@ model FeedbackFormSection {
 
 enum QuestionType {
   RATING // 1-5 numeric scale
-  TEXT   // free-form narrative
+  TEXT // free-form narrative
 }
 
 model FeedbackFormQuestion {
-  id        String               @id @default(uuid())
-  sectionId String               @map("section_id")
-  section   FeedbackFormSection  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  id        String              @id @default(uuid())
+  sectionId String              @map("section_id")
+  section   FeedbackFormSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   text      String
   type      QuestionType
-  required  Boolean              @default(true)
+  required  Boolean             @default(true)
   order     Int
   responses FeedbackResponse[]
-  createdAt DateTime             @default(now()) @map("created_at")
-  updatedAt DateTime             @updatedAt @map("updated_at")
+  createdAt DateTime            @default(now()) @map("created_at")
+  updatedAt DateTime            @updatedAt @map("updated_at")
 
   @@map("feedback_form_questions")
 }
@@ -543,24 +543,24 @@ enum AssignmentStatus {
 }
 
 model FeedbackFormAssignment {
-  id            String           @id @default(uuid())
-  reviewCycleId String           @map("review_cycle_id")
-  reviewCycle   ReviewCycle      @relation(fields: [reviewCycleId], references: [id])
-  formId        String           @map("form_id")
-  form          FeedbackForm     @relation(fields: [formId], references: [id])
-  reviewerId    String           @map("reviewer_id")
-  reviewer      Employee         @relation("AssignmentReviewer", fields: [reviewerId], references: [id])
-  employeeId    String           @map("employee_id")
-  employee      Employee         @relation("AssignmentEmployee", fields: [employeeId], references: [id])
-  projectId     String?          @map("project_id")
-  project       Project?         @relation(fields: [projectId], references: [id])
-  assignedById  String           @map("assigned_by_id")
-  assignedBy    User             @relation("AssignmentCreator", fields: [assignedById], references: [id])
-  status        AssignmentStatus @default(PENDING)
-  dueDate       DateTime?        @map("due_date")
+  id            String              @id @default(uuid())
+  reviewCycleId String              @map("review_cycle_id")
+  reviewCycle   ReviewCycle         @relation(fields: [reviewCycleId], references: [id])
+  formId        String              @map("form_id")
+  form          FeedbackForm        @relation(fields: [formId], references: [id])
+  reviewerId    String              @map("reviewer_id")
+  reviewer      Employee            @relation("AssignmentReviewer", fields: [reviewerId], references: [id])
+  employeeId    String              @map("employee_id")
+  employee      Employee            @relation("AssignmentEmployee", fields: [employeeId], references: [id])
+  projectId     String?             @map("project_id")
+  project       Project?            @relation(fields: [projectId], references: [id])
+  assignedById  String              @map("assigned_by_id")
+  assignedBy    User                @relation("AssignmentCreator", fields: [assignedById], references: [id])
+  status        AssignmentStatus    @default(PENDING)
+  dueDate       DateTime?           @map("due_date")
   submission    FeedbackSubmission?
-  createdAt     DateTime         @default(now()) @map("created_at")
-  updatedAt     DateTime         @updatedAt @map("updated_at")
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
 
   @@unique([reviewCycleId, formId, reviewerId, employeeId, projectId])
   @@index([reviewerId])
@@ -630,17 +630,17 @@ model FeedbackSummary {
 
 // Timesheet (file 04) — the truth source for utilisation & billability
 model Timesheet {
-  id          String    @id @default(uuid())
-  employee    Employee  @relation(fields: [employeeId], references: [id])
-  employeeId  String    @map("employee_id")
-  project     Project?  @relation(fields: [projectId], references: [id])
-  projectId   String?   @map("project_id")
-  isBillable  Boolean   @default(false) @map("is_billable")
-  hours       Float     @default(0)
+  id          String   @id @default(uuid())
+  employee    Employee @relation(fields: [employeeId], references: [id])
+  employeeId  String   @map("employee_id")
+  project     Project? @relation(fields: [projectId], references: [id])
+  projectId   String?  @map("project_id")
+  isBillable  Boolean  @default(false) @map("is_billable")
+  hours       Float    @default(0)
   date        DateTime
   status      String?
-  externalKey String?   @unique @map("external_key")
-  createdAt   DateTime  @default(now()) @map("created_at")
+  externalKey String?  @unique @map("external_key")
+  createdAt   DateTime @default(now()) @map("created_at")
 
   @@index([employeeId, date])
   @@index([projectId, date])
@@ -664,42 +664,42 @@ model Competency {
 
 // PipelineRequest (file 07) — demand-side pipeline, pre-project
 model PipelineRequest {
-  id                String    @id @default(uuid())
-  cluster           Int?
-  client            String?
-  requestType       String?   @map("request_type")
-  clientPriority    String?   @map("client_priority")
-  likelyStart       DateTime? @map("likely_start")
-  numberOfWeeks     Float?    @map("number_of_weeks")
-  dealStage         String?   @map("deal_stage")
-  solution          String?
-  resourcesRequested String?  @map("resources_requested")
-  resourceRecommended Float?  @map("resource_recommended")
-  percentAvailable  Float?    @map("percent_available")
-  skillset          String?
-  skillsetMatch     String?   @map("skillset_match")
-  sowSigned              Boolean   @default(false) @map("sow_signed")
-  status                 String?
-  comments               String?
+  id                       String    @id @default(uuid())
+  cluster                  Int?
+  client                   String?
+  requestType              String?   @map("request_type")
+  clientPriority           String?   @map("client_priority")
+  likelyStart              DateTime? @map("likely_start")
+  numberOfWeeks            Float?    @map("number_of_weeks")
+  dealStage                String?   @map("deal_stage")
+  solution                 String?
+  resourcesRequested       String?   @map("resources_requested")
+  resourceRecommended      Float?    @map("resource_recommended")
+  percentAvailable         Float?    @map("percent_available")
+  skillset                 String?
+  skillsetMatch            String?   @map("skillset_match")
+  sowSigned                Boolean   @default(false) @map("sow_signed")
+  status                   String?
+  comments                 String?
   // Enhancement fields (WI-008)
-  serviceLine            String?   @map("service_line")
-  solutionPriority       Int?      @map("solution_priority")
-  confidence             Int       @default(20)
-  isNewClient            Boolean   @default(false) @map("is_new_client")
-  clientRelationshipMonths Int?    @map("client_relationship_months")
-  clientTier             String?   @map("client_tier")
-  dealLostAt             DateTime? @map("deal_lost_at")
-  hiringLeadTimeAlert    Boolean   @default(false) @map("hiring_lead_time_alert")
+  serviceLine              String?   @map("service_line")
+  solutionPriority         Int?      @map("solution_priority")
+  confidence               Int       @default(20)
+  isNewClient              Boolean   @default(false) @map("is_new_client")
+  clientRelationshipMonths Int?      @map("client_relationship_months")
+  clientTier               String?   @map("client_tier")
+  dealLostAt               DateTime? @map("deal_lost_at")
+  hiringLeadTimeAlert      Boolean   @default(false) @map("hiring_lead_time_alert")
   // Project-detail enrichment fields (from project_details.csv / file 02)
-  projectKey             String?   @map("project_key")
-  techCoe                String?   @map("tech_coe")
-  propositionCoe         String?   @map("proposition_coe")
-  reporterExternalId     String?   @map("reporter_external_id")
-  approverExternalId     String?   @map("approver_external_id")
-  clientExternalId       String?   @map("client_external_id")
-  typeOfProject          String?   @map("type_of_project")
-  createdAt              DateTime  @default(now()) @map("created_at")
-  updatedAt              DateTime  @updatedAt @map("updated_at")
+  projectKey               String?   @map("project_key")
+  techCoe                  String?   @map("tech_coe")
+  propositionCoe           String?   @map("proposition_coe")
+  reporterExternalId       String?   @map("reporter_external_id")
+  approverExternalId       String?   @map("approver_external_id")
+  clientExternalId         String?   @map("client_external_id")
+  typeOfProject            String?   @map("type_of_project")
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
 
   @@index([cluster])
   @@index([sowSigned])
@@ -728,15 +728,15 @@ model WeeklyStatus {
 
 // UtilisationSnapshot — derived weekly from timesheets per employee
 model UtilisationSnapshot {
-  id              String   @id @default(uuid())
-  employee        Employee @relation(fields: [employeeId], references: [id])
-  employeeId      String   @map("employee_id")
-  weekStart       DateTime @map("week_start")
-  totalHours      Float    @default(0) @map("total_hours")
-  billableHours   Float    @default(0) @map("billable_hours")
-  utilisation     Float    @default(0)
-  billableUtil    Float    @default(0) @map("billable_util")
-  createdAt       DateTime @default(now()) @map("created_at")
+  id            String   @id @default(uuid())
+  employee      Employee @relation(fields: [employeeId], references: [id])
+  employeeId    String   @map("employee_id")
+  weekStart     DateTime @map("week_start")
+  totalHours    Float    @default(0) @map("total_hours")
+  billableHours Float    @default(0) @map("billable_hours")
+  utilisation   Float    @default(0)
+  billableUtil  Float    @default(0) @map("billable_util")
+  createdAt     DateTime @default(now()) @map("created_at")
 
   @@unique([employeeId, weekStart])
   @@index([employeeId])
@@ -767,9 +767,9 @@ model ShadowFlag {
 // ─── Project Experience Documents ───────────────────────────
 
 model ProjectExperienceDoc {
-  id               String    @id @default(uuid())
-  employee         Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  employeeId       String    @map("employee_id")
+  id         String   @id @default(uuid())
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employeeId String   @map("employee_id")
 
   title            String
   clientIndustry   String?   @map("client_industry")
@@ -783,15 +783,15 @@ model ProjectExperienceDoc {
   endDate          DateTime? @map("end_date")
   rawText          String?   @map("raw_text")
 
-  extractionStatus String    @default("DRAFT") @map("extraction_status")
-  extractedSkills  String?   @map("extracted_skills")
-  aiSummary        String?   @map("ai_summary")
+  extractionStatus String  @default("DRAFT") @map("extraction_status")
+  extractedSkills  String? @map("extracted_skills")
+  aiSummary        String? @map("ai_summary")
 
-  projectId        String?   @map("project_id")
-  project          Project?  @relation(fields: [projectId], references: [id])
+  projectId String?  @map("project_id")
+  project   Project? @relation(fields: [projectId], references: [id])
 
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([employeeId])
   @@map("project_experience_docs")
@@ -810,4 +810,40 @@ model IngestReport {
   createdAt      DateTime @default(now()) @map("created_at")
 
   @@map("ingest_reports")
+}
+
+// ─── Resourcing Kanban Decisions ──────────────────────────────
+
+model ProjectResourcingStatus {
+  projectId         String             @id @map("project_id")
+  project           Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  isSubmitted       Boolean            @default(false) @map("is_submitted")
+  isNegotiated      Boolean            @default(false) @map("is_negotiated")
+  resourceDecisions ResourceDecision[]
+  resourceSwaps     ResourceSwap[]
+
+  @@map("project_resourcing_statuses")
+}
+
+model ResourceDecision {
+  id                String                  @id @default(uuid())
+  projectId         String                  @map("project_id")
+  projectResourcing ProjectResourcingStatus @relation(fields: [projectId], references: [projectId], onDelete: Cascade)
+  resourceKey       String                  @map("resource_key") // e.g., "role-index"
+  decision          String // "Approved" | "Rejected"
+  justifications    String // JSON string representing justifications string[]
+
+  @@unique([projectId, resourceKey])
+  @@map("resource_decisions")
+}
+
+model ResourceSwap {
+  id                String                  @id @default(uuid())
+  projectId         String                  @map("project_id")
+  projectResourcing ProjectResourcingStatus @relation(fields: [projectId], references: [projectId], onDelete: Cascade)
+  resourceKey       String                  @map("resource_key") // e.g., "role-index"
+  swappedName       String                  @map("swapped_name")
+
+  @@unique([projectId, resourceKey])
+  @@map("resource_swaps")
 }
