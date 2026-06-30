@@ -33,7 +33,7 @@ const adminNavItems: NavItem[] = [
 const resourcingNavItems: NavItem[] = [
   { title: "Pipeline Inception", href: "/admin/resourcing/pipeline",      icon: Lightbulb },
   { title: "Pipeline Kanban",    href: "/admin/resourcing/kanban",        icon: LayoutGrid },
-  { title: "PM Questionnaire",  href: "/admin/resourcing/questionnaire", icon: ClipboardList },
+  { title: "PM Questionnaire",   href: "/admin/resourcing/questionnaire", icon: ClipboardList },
   { title: "Match Engine",      href: "/admin/resourcing/match",         icon: Zap },
   { title: "Health Radar",      href: "/admin/resourcing/health",        icon: HeartPulse },
   { title: "Simulator",         href: "/admin/resourcing/simulator",     icon: TrendingUp },

@@ -1,24 +1,24 @@
 import { Suspense } from "react";
-import { getPipelineRequestsWithContext } from "@/server/actions/pipeline";
-import { PageHeader } from "@/components/shared/page-header";
+import { getPipelineRequestsWithContext, getBenchEmployees } from "@/server/actions/pipeline";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PipelineInceptionClient } from "./pipeline-client";
+import { PipelineClient } from "./pipeline-client";
 
 async function PipelineData() {
-  const requests = await getPipelineRequestsWithContext(false);
-  return <PipelineInceptionClient requests={requests} />;
+  const [requests, bench] = await Promise.all([
+    getPipelineRequestsWithContext(false),
+    getBenchEmployees().catch(() => [])
+  ]);
+  return <PipelineClient requests={requests} benchCount={bench.length} />;
 }
 
-export default function PipelineInceptionPage() {
+export default function PipelinePage() {
   return (
     <div className="flex flex-col gap-6 p-6">
-      <PageHeader
-        title="Pipeline Inception"
-        description="Stage 1 & 2 opportunity management. Set client context, service lines, and confidence levels before matching resources."
-      />
-      <Suspense fallback={<Skeleton className="h-[600px] w-full" />}>
+      <Suspense fallback={<Skeleton className="h-[700px] w-full rounded-lg" />}>
         <PipelineData />
       </Suspense>
     </div>
   );
 }
+
+
