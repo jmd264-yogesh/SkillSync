@@ -245,6 +245,61 @@ export const TRAINING_READINESS_LABELS = {
   LOW:    { min: 0,  label: "Needs Development", color: "text-red-700 bg-red-50 border-red-200" },
 } as const;
 
+// ─── Rate Card (Resource Forecast — revenue modelling) ───────
+// Day rates in GBP per role/grade. billRate = client-facing, costRate = internal.
+// Keyed by canonical role names (see role-mapping.ts). Longest keys are matched first
+// so "Senior Software Engineer" wins over "Software Engineer". Tune live for the demo.
+export const RATE_CARD: Record<string, { billRate: number; costRate: number }> = {
+  "Partner":                          { billRate: 2500, costRate: 1200 },
+  "Partner Technology":               { billRate: 2500, costRate: 1200 },
+  "Associate Partner":                { billRate: 2000, costRate: 950 },
+  "Associate Partner Technology":     { billRate: 2000, costRate: 950 },
+  "Principal Technology Architect":   { billRate: 1650, costRate: 820 },
+  "Principal Architect":              { billRate: 1650, costRate: 820 },
+  "Principal Engineer":               { billRate: 1600, costRate: 800 },
+  "Principal":                        { billRate: 1600, costRate: 800 },
+  "Technical Solutions Architect":    { billRate: 1400, costRate: 720 },
+  "Manager":                          { billRate: 1400, costRate: 700 },
+  "Senior Solutions Consultant":      { billRate: 1150, costRate: 620 },
+  "Senior Consultant":                { billRate: 1100, costRate: 600 },
+  "Senior Software Engineer":         { billRate: 800,  costRate: 440 },
+  "Solutions Consultant":             { billRate: 900,  costRate: 500 },
+  "Consultant":                       { billRate: 850,  costRate: 480 },
+  "Senior Associate Consultant":      { billRate: 750,  costRate: 420 },
+  "Solutions Enabler":               { billRate: 650,  costRate: 380 },
+  "Software Engineer":                { billRate: 600,  costRate: 350 },
+  "Associate Consultant":             { billRate: 600,  costRate: 350 },
+  "Intern Technology":                { billRate: 300,  costRate: 180 },
+  "Intern":                           { billRate: 300,  costRate: 180 },
+};
+
+export const DEFAULT_RATE = { billRate: 800, costRate: 450 } as const;
+
+// Working-time constants for FTE ↔ revenue conversion
+export const WORKING_DAYS_PER_MONTH = 21;
+export const WORKING_DAYS_PER_WEEK = 5;
+export const TARGET_UTILISATION = 0.8; // billable target used by the revenue solver
+export const HIRING_LEAD_TIME_WEEKS = 8; // hire-by = shortfall date − lead time
+
+// Map any jobName/role string to a canonical rate-card key via longest-key
+// substring match. Demand and supply both funnel through this so they align.
+export function rateRoleKey(role: string | null): string {
+  if (!role) return "Other";
+  if (RATE_CARD[role]) return role;
+  const r = role.toLowerCase().trim();
+  const keys = Object.keys(RATE_CARD).sort((a, b) => b.length - a.length);
+  for (const key of keys) {
+    if (r.includes(key.toLowerCase())) return key;
+  }
+  return "Other";
+}
+
+// Resolve a rate for an arbitrary jobName/role via longest-key substring match.
+export function rateForRole(role: string | null): { billRate: number; costRate: number } {
+  const key = rateRoleKey(role);
+  return RATE_CARD[key] ?? { ...DEFAULT_RATE };
+}
+
 export const ROLE_PERMISSIONS = {
   ADMIN: [
     "manage:coe",

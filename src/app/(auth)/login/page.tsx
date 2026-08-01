@@ -28,7 +28,8 @@ export default function LoginPage() {
     const result = await signIn("credentials", { email: data.email, password: data.password, redirect: false });
     setIsLoading(false);
     if (result?.error) { setError("Invalid email or password"); return; }
-    router.push("/employee/my-skills");
+    // Land on the role's home ("/" redirects ADMIN → dashboard, MANAGER → approvals, EMPLOYEE → my-skills)
+    router.push("/");
     router.refresh();
   }
 

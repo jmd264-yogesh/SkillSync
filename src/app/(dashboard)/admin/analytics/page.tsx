@@ -16,8 +16,8 @@ export default function AnalyticsPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Analytics & Reporting"
-        description="Interactive resourcing and skill intelligence dashboard"
+        title="Dashboard"
+        description="Pipeline, resourcing and skills at a glance"
       />
       <Suspense fallback={<Skeleton className="h-[700px] w-full rounded-lg" />}>
         <DashboardData />

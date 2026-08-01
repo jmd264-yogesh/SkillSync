@@ -111,8 +111,8 @@ export function AnalyticsClient({ requests, benchCount }: AnalyticsClientProps) 
       <div className="flex justify-center pb-1">
         <div className="flex bg-slate-100 p-1 rounded-full shadow-inner relative">
           {[
-            { id: "timeline", label: "Flow Timeline", icon: GitFork },
-            { id: "board", label: "Pipeline Ledger", icon: Lightbulb },
+            { id: "timeline", label: "Pipeline Flow", icon: GitFork },
+            { id: "board", label: "Pipeline List", icon: Lightbulb },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;

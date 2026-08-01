@@ -38,6 +38,25 @@ export const pipelineOutlookSchema = z.object({
   cluster: z.number().int().optional(),
 });
 
+export const resourceForecastSchema = z.object({
+  horizonMonths: z.number().int().min(1).max(24).optional().default(6),
+  scenario: z.enum(["confirmed", "weighted", "all"]).optional().default("weighted"),
+  revenueTarget: z.number().min(0).max(1_000_000_000).optional(),
+  targetPeriod: z.enum(["monthly", "annual"]).optional().default("annual"),
+});
+
+export const scenarioCompareSchema = z.object({
+  scenarios: z.array(
+    z.object({
+      id: z.string().min(1).max(64),
+      name: z.string().min(1).max(80),
+      wonStages: z.array(z.string().min(1).max(40)).min(1).max(8),
+      horizonMonths: z.number().int().min(1).max(24).optional().default(6),
+      revenueTarget: z.number().min(0).max(1_000_000_000).optional(),
+    }),
+  ).min(1).max(4),
+});
+
 export const markDealLostSchema = z.object({
   pipelineRequestId: z.string().uuid(),
   projectId: z.string().uuid().optional(),
@@ -71,5 +90,7 @@ export type RecommendForPipelineInput = z.infer<typeof recommendForPipelineSchem
 export type RecommendAdHocInput = z.infer<typeof recommendAdHocSchema>;
 export type ForecastNewProjectsInput = z.infer<typeof forecastNewProjectsSchema>;
 export type PipelineOutlookInput = z.infer<typeof pipelineOutlookSchema>;
+export type ResourceForecastInput = z.infer<typeof resourceForecastSchema>;
+export type ScenarioCompareInput = z.infer<typeof scenarioCompareSchema>;
 export type AllocationReportFilterInput = z.infer<typeof allocationReportFilterSchema>;
 export type CopilotTurnInput = z.infer<typeof copilotTurnSchema>;

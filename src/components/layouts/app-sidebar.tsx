@@ -1,12 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Settings2, Award, Users, Link2,
   Search, BarChart3, ClipboardCheck, FileText, GraduationCap,
   ArrowUpRight, FileBarChart, Target, UserCheck, LayoutGrid,
-  MessageSquare, Zap, HeartPulse, TrendingUp, CalendarRange, Bot, Briefcase, Presentation, ClipboardList, Lightbulb,
+  Zap, HeartPulse, TrendingUp, CalendarRange, Bot, Briefcase, Presentation, ClipboardList, Lightbulb,
+  LineChart, ChevronDown, GitCompare,
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
@@ -14,14 +16,26 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 import type { UserRole } from "@prisma/client";
 import type { LucideIcon } from "lucide-react";
 
 interface NavItem { title: string; href: string; icon: LucideIcon }
 interface AppSidebarProps { role: UserRole }
 
-const adminNavItems: NavItem[] = [
-  { title: "Dashboard",           href: "/admin/analytics",           icon: LayoutDashboard },
+// Pinned at the top: dashboard + the MVP use-case tools (always visible).
+const adminPinnedItems: NavItem[] = [
+  { title: "Dashboard",     href: "/admin/analytics",             icon: LayoutDashboard },
+  { title: "Match Engine",  href: "/admin/resourcing/match",      icon: Zap },
+  { title: "Health Radar",  href: "/admin/resourcing/health",     icon: HeartPulse },
+  { title: "Forecast",      href: "/admin/resourcing/forecast",   icon: LineChart },
+  { title: "Scenario Planner", href: "/admin/resourcing/scenario-planner", icon: GitCompare },
+  { title: "Allocations",   href: "/admin/resourcing/allocations",icon: LayoutGrid },
+  { title: "RM Copilot",    href: "/admin/copilot",               icon: Bot },
+];
+
+// Collapsed by default: admin setup pages.
+const adminSetupItems: NavItem[] = [
   { title: "Configuration",       href: "/admin/config",              icon: Settings2 },
   { title: "Employee Mapping",    href: "/admin/employee-mapping",    icon: Users },
   { title: "Skill Mapping",       href: "/admin/skill-mapping",       icon: Link2 },
@@ -30,17 +44,14 @@ const adminNavItems: NavItem[] = [
   { title: "Resource Management", href: "/admin/resource-management", icon: LayoutGrid },
 ];
 
-const resourcingNavItems: NavItem[] = [
+// Collapsed by default: secondary resourcing tools.
+const resourcingMoreItems: NavItem[] = [
   { title: "Pipeline Inception", href: "/admin/resourcing/pipeline",      icon: Lightbulb },
   { title: "Pipeline Kanban",    href: "/admin/resourcing/kanban",        icon: LayoutGrid },
   { title: "PM Questionnaire",   href: "/admin/resourcing/questionnaire", icon: ClipboardList },
-  { title: "Match Engine",      href: "/admin/resourcing/match",         icon: Zap },
-  { title: "Health Radar",      href: "/admin/resourcing/health",        icon: HeartPulse },
-  { title: "Simulator",         href: "/admin/resourcing/simulator",     icon: TrendingUp },
-  { title: "Pipeline Outlook",  href: "/admin/resourcing/outlook",       icon: CalendarRange },
-  { title: "Allocations",       href: "/admin/resourcing/allocations",   icon: LayoutGrid },
-  { title: "RM Copilot",        href: "/admin/copilot",                  icon: Bot },
-  { title: "Pitch / Judge View",href: "/pitch",                           icon: Presentation },
+  { title: "Simulator",          href: "/admin/resourcing/simulator",     icon: TrendingUp },
+  { title: "Pipeline Outlook",   href: "/admin/resourcing/outlook",       icon: CalendarRange },
+  { title: "Pitch / Judge View", href: "/pitch",                          icon: Presentation },
 ];
 
 const managerNavItems: NavItem[] = [
@@ -95,6 +106,57 @@ function NavSection({ label, items, pathname }: { label: string; items: NavItem[
   );
 }
 
+function CollapsibleNavSection({
+  label, items, pathname, defaultOpen = false,
+}: { label: string; items: NavItem[]; pathname: string; defaultOpen?: boolean }) {
+  // Open automatically if a child route is active, otherwise honour defaultOpen (collapsed).
+  const hasActiveChild = items.some(
+    (i) => pathname === i.href || pathname.startsWith(i.href + "/"),
+  );
+  const [open, setOpen] = useState(defaultOpen || hasActiveChild);
+
+  return (
+    <SidebarGroup>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center justify-between w-full px-3 mb-1 group/collapse group-data-[collapsible=icon]:hidden"
+      >
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-secondary">{label}</span>
+        <ChevronDown className={cn("h-3.5 w-3.5 text-slate-400 transition-transform", open ? "rotate-0" : "-rotate-90")} />
+      </button>
+      {open && (
+        <SidebarGroupContent>
+          <SidebarMenu className="space-y-0.5 px-2">
+            {items.map((item) => {
+              const active = pathname === item.href || pathname.startsWith(item.href + "/");
+              return (
+                <SidebarMenuItem key={item.href}>
+                  <SidebarMenuButton
+                    isActive={active}
+                    tooltip={item.title}
+                    className={[
+                      "relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-150 w-full",
+                      "group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0!",
+                      active
+                        ? "bg-primary! text-white! shadow-sm!"
+                        : "text-slate-500 hover:bg-slate-100 hover:text-slate-800",
+                    ].join(" ")}
+                    render={<Link href={item.href} />}
+                  >
+                    <item.icon className="h-[17px] w-[17px] shrink-0" />
+                    <span className="group-data-[collapsible=icon]:hidden truncate">{item.title}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              );
+            })}
+          </SidebarMenu>
+        </SidebarGroupContent>
+      )}
+    </SidebarGroup>
+  );
+}
+
 export function AppSidebar({ role }: AppSidebarProps) {
   const pathname = usePathname();
 
@@ -122,14 +184,19 @@ export function AppSidebar({ role }: AppSidebarProps) {
       <SidebarContent className="pt-3">
         {role === "ADMIN" && (
           <>
-            <NavSection label="Administration" items={adminNavItems} pathname={pathname} />
-            <NavSection label="Resourcing CoLab" items={resourcingNavItems} pathname={pathname} />
+            <NavSection label="Resourcing CoLab" items={adminPinnedItems} pathname={pathname} />
+            <CollapsibleNavSection label="Administration" items={adminSetupItems} pathname={pathname} />
+            <CollapsibleNavSection label="More Resourcing" items={resourcingMoreItems} pathname={pathname} />
           </>
         )}
         {role === "MANAGER" && (
           <NavSection label="Team Management" items={managerNavItems} pathname={pathname} />
         )}
-        <NavSection label="My Workspace" items={employeeNavItems} pathname={pathname} />
+        {role === "ADMIN" ? (
+          <CollapsibleNavSection label="My Workspace" items={employeeNavItems} pathname={pathname} />
+        ) : (
+          <NavSection label="My Workspace" items={employeeNavItems} pathname={pathname} />
+        )}
       </SidebarContent>
     </Sidebar>
   );

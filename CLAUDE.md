@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Skill Matrix Platform — Claude Code Guide
 
 ## AI Engineering System
@@ -13,20 +17,30 @@ This repository uses Claude Code as a senior engineering partner. Every session 
 
 ## Dev Commands
 
+This repo uses **npm** (package-lock.json is the committed lockfile — do not add a pnpm-lock.yaml).
+
 ```bash
-pnpm dev            # Start dev server (http://localhost:3000)
-pnpm build          # Production build + type check
-pnpm lint           # ESLint check
-pnpm lint:fix       # ESLint auto-fix
-pnpm format         # Prettier format
-pnpm test           # All unit + integration tests
-pnpm test:e2e       # Playwright E2E tests
-pnpm test:coverage  # Coverage report
-pnpm db:migrate     # Run Prisma migrations (dev)
-pnpm db:generate    # Regenerate Prisma client
-pnpm db:seed        # Seed database
-pnpm db:studio      # Open Prisma Studio
+npm run dev           # Start dev server (http://localhost:3000)
+npm run build         # Production build + type check
+npm run lint          # ESLint check
+npm run lint:fix      # ESLint auto-fix
+npm run format        # Prettier format
+npm test              # All unit + integration tests (vitest run)
+npm run test:watch    # Vitest watch mode
+npm run test:coverage # Coverage report
+npm run test:e2e      # Playwright E2E tests
+npm run db:generate   # Regenerate Prisma client
+npm run db:push       # Push schema without a migration (prototyping)
+npm run db:migrate    # Run Prisma migrations (dev)
+npm run db:seed       # Seed database (runs prisma/seed.ts)
+npm run db:studio     # Open Prisma Studio
+npm run etl           # Ingest reference files (scripts/etl/ingest.ts) — Resourcing CoLab data
+npm run export:excel  # CLI export: out/07_Pipeline_Details_UPDATED.xlsx
 ```
+
+Run a single test file: `npx vitest run tests/unit/services/foo.test.ts`
+
+**DB provider note:** `prisma/schema.prisma` and `migrations/migration_lock.toml` are currently `sqlite` (`DATABASE_URL="file:./dev.db"` in `.env`), even though `architecture.md` and `codebase-current-state.md` describe PostgreSQL 16 as the target. Treat the schema file as ground truth over the docs until this is reconciled.
 
 ---
 
@@ -70,6 +84,10 @@ pnpm db:studio      # Open Prisma Studio
 @.claude/context/ai-guidelines.md
 
 @.claude/context/data-governance.md
+
+@.claude/context/codebase-current-state.md
+
+`codebase-current-state.md` reflects what is actually implemented in the code (directory map, real model list, wired-up features, and a "What Is NOT Yet Built" list). Prefer it over `architecture.md`'s module table or `module-status.md` when they disagree — those two track planned/aspirational state.
 
 ---
 

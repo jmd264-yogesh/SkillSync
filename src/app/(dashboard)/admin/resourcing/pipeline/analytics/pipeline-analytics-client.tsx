@@ -67,12 +67,13 @@ function formatLeadTime(months: number | null, likelyStart: Date | null): string
 
 type WaterfallDatum = { stage: string; base: number; value: number; total: number; deals: number; fill: string; };
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+type TooltipEntry = { name?: string; value?: number | string; stroke?: string; fill?: string };
+const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: TooltipEntry[]; label?: string }) => {
   if (!active || !payload?.length) return null;
   return (
     <div className="rounded-xl border border-slate-100 bg-slate-900 p-3 shadow-xl text-white text-xs space-y-1.5">
       <p className="font-bold text-slate-200 border-b border-slate-800 pb-1 mb-1">{label}</p>
-      {payload.map((p: any) => (
+      {payload.map((p) => (
         <div key={p.name} className="flex items-center gap-3 justify-between">
           <span className="flex items-center gap-1.5 text-slate-400">
             <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: p.stroke || p.fill }} />{p.name}:
@@ -160,21 +161,21 @@ export function PipelineAnalyticsClient({ requests, benchCount = 0 }: { requests
           <Lightbulb className="h-5 w-5 text-white" />
         </div>
         <div className="space-y-1">
-          <h3 className="font-bold text-indigo-950 uppercase tracking-wider text-[11px]">Executive Brief &amp; Capacity Supply Gap</h3>
+          <h3 className="font-bold text-indigo-950 uppercase tracking-wider text-[11px]">Pipeline Summary</h3>
           <p className="text-xs text-slate-700 leading-relaxed max-w-5xl font-medium">{executiveBrief}</p>
         </div>
       </div>
 
       {/* 2 — KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label="Active Pipeline Deals" value={kpis.totalDeals} sub={`Avg. duration: ${kpis.avgDuration} weeks`} icon={<Briefcase className="h-5 w-5 text-indigo-950" />} accent="bg-slate-50 text-indigo-950 border-slate-100" />
-        <KpiCard label="Gross Headcount Demand" value={`${kpis.grossFTEs} FTE`} sub="Total raw resource request" icon={<Users className="h-5 w-5 text-[#ff6196]" />} accent="bg-rose-50/50 text-[#ff6196] border-[#ff6196]/10" />
-        <KpiCard label="Weighted Expected Demand" value={`${kpis.weightedFTEs} FTE`} sub="Probability-adjusted load" icon={<TrendingUp className="h-5 w-5 text-indigo-950" />} accent="bg-indigo-50/50 text-indigo-950 border-indigo-100/50" />
-        <KpiCard label="Urgent Hiring Risk" value={kpis.atRisk} sub="Start < 6 months out" icon={<AlertTriangle className="h-5 w-5 text-rose-600" />} accent="bg-rose-50/50 text-rose-600 border-rose-200" />
+        <KpiCard label="Active Deals" value={kpis.totalDeals} sub={`Avg. duration: ${kpis.avgDuration} weeks`} icon={<Briefcase className="h-5 w-5 text-indigo-950" />} accent="bg-slate-50 text-indigo-950 border-slate-100" />
+        <KpiCard label="Resources Needed" value={`${kpis.grossFTEs} FTE`} sub="Total across all active deals" icon={<Users className="h-5 w-5 text-[#ff6196]" />} accent="bg-rose-50/50 text-[#ff6196] border-[#ff6196]/10" />
+        <KpiCard label="Expected Resources" value={`${kpis.weightedFTEs} FTE`} sub="Adjusted for win probability" icon={<TrendingUp className="h-5 w-5 text-indigo-950" />} accent="bg-indigo-50/50 text-indigo-950 border-indigo-100/50" />
+        <KpiCard label="Urgent Hires Needed" value={kpis.atRisk} sub="Start < 6 months out" icon={<AlertTriangle className="h-5 w-5 text-rose-600" />} accent="bg-rose-50/50 text-rose-600 border-rose-200" />
       </div>
 
       {/* 3 — Flow Timeline */}
-      <SectionCard title="Pipeline Flow & Funnel Timeline" description="Horizontal pipeline stages with branching demand metrics" action={<Activity className="h-4 w-4 text-slate-400" />} flush className="relative overflow-hidden">
+      <SectionCard title="Pipeline Flow" description="Deals and resource demand at each stage" action={<Activity className="h-4 w-4 text-slate-400" />} flush className="relative overflow-hidden">
         <div className="overflow-x-auto pb-4 pt-4 px-6 w-full">
           <div className="min-w-[920px] relative h-[420px]">
             <div className="w-[84%] h-6 bg-slate-100 rounded-full border border-slate-200/50 absolute left-[8%] top-[210px] -translate-y-1/2 shadow-inner overflow-hidden">
@@ -202,7 +203,8 @@ export function PipelineAnalyticsClient({ requests, benchCount = 0 }: { requests
                       <motion.div initial={{ height: 0 }} animate={{ height: 24 }} transition={{ delay: idx * 0.08, duration: 0.4 }} className={cn("w-0.5 relative", stageColor.line, isUp ? "flex flex-col-reverse" : "flex flex-col")}>
                         <div className={cn("w-3 h-0.5 absolute left-[-5px]", stageColor.line)} style={{ [isUp ? "top" : "bottom"]: 0 }} />
                       </motion.div>
-                      <motion.div initial={{ opacity: 0, y: isUp ? -15 : 15 }} animate={{ opacity: 1, y: 0 }} whileHover={{ scale: 1.07, zIndex: 50 }}
+                      <motion.div initial={{ opacity: 0, y: isUp ? -15 : 15 }} animate={{ opacity: 1, y: 0 }}
+                        whileHover={{ scale: 1.3, zIndex: 50, boxShadow: "0 12px 32px -8px rgba(15,23,42,0.25)" }}
                         transition={{ delay: idx * 0.1 + 0.15, duration: 0.3 }} onClick={() => setSelectedStage(stage.key)}
                         style={{ originX: "50%", originY: isUp ? "100%" : "0%" }}
                         className={cn("absolute w-40 rounded-xl border p-2.5 shadow-sm bg-white/95 cursor-pointer select-none", isUp ? "bottom-[24px]" : "top-[24px]",
@@ -242,9 +244,9 @@ export function PipelineAnalyticsClient({ requests, benchCount = 0 }: { requests
                         )}
                         <div className="mt-2 pt-1.5 border-t border-slate-100 space-y-1 text-[9px] font-semibold text-slate-500">
                           <div className="flex justify-between"><span>Deals</span><span className="font-bold text-slate-700">{stage.dealCount}</span></div>
-                          <div className="flex justify-between"><span>Gross FTE</span><span className="font-bold text-slate-700">{stage.fte.toFixed(1)}</span></div>
-                          <div className="flex justify-between"><span>Expected Net</span><span className={cn("font-bold", stage.hiringRisks > 0 ? "text-rose-600" : "text-slate-700")}>{stage.weightedFte.toFixed(1)}</span></div>
-                          <div className="flex justify-between"><span>Avg Duration</span><span className="font-bold text-slate-700">{stage.avgDuration} wks</span></div>
+                          <div className="flex justify-between"><span>Resources needed</span><span className="font-bold text-slate-700">{stage.fte.toFixed(1)} FTE</span></div>
+                          <div className="flex justify-between"><span>Expected (weighted)</span><span className={cn("font-bold", stage.hiringRisks > 0 ? "text-rose-600" : "text-slate-700")}>{stage.weightedFte.toFixed(1)} FTE</span></div>
+                          <div className="flex justify-between"><span>Avg duration</span><span className="font-bold text-slate-700">{stage.avgDuration} wks</span></div>
                         </div>
                       </motion.div>
                     </div>
@@ -260,7 +262,7 @@ export function PipelineAnalyticsClient({ requests, benchCount = 0 }: { requests
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm flex flex-col overflow-hidden lg:col-span-2">
           <div className="px-6 pt-5 pb-3 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/20">
-            <h3 className="font-bold text-sm text-slate-800 tracking-tight flex items-center gap-2"><Info className="h-4 w-4 text-slate-400" />Stage Analytics</h3>
+            <h3 className="font-bold text-sm text-slate-800 tracking-tight flex items-center gap-2"><Info className="h-4 w-4 text-slate-400" />Stage Details</h3>
             {stageDetails && <span className="text-[10px] font-bold text-slate-400 uppercase">{stageDetails.abbr} Phase</span>}
           </div>
           <div className="flex-1 px-6 pb-6 pt-5">
@@ -269,7 +271,7 @@ export function PipelineAnalyticsClient({ requests, benchCount = 0 }: { requests
                 <motion.div key={stageDetails.key} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} transition={{ duration: 0.15 }} className="space-y-5">
                   <div className="flex justify-between items-start">
                     <div className="space-y-1">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Active Stage</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Selected Stage</span>
                       <h4 className="font-black text-slate-950 text-lg leading-tight">{stageDetails.label}</h4>
                     </div>
                     <div className={cn("px-2.5 py-1 rounded-full border text-xs font-bold", stageDetails.key === "ACTIVE" ? "bg-emerald-50 border-emerald-200 text-emerald-700" : stageDetails.key === "RAMP_DOWN" ? "bg-indigo-50 border-indigo-200 text-indigo-700" : "bg-slate-50 border-slate-200 text-slate-700")}>
@@ -278,11 +280,11 @@ export function PipelineAnalyticsClient({ requests, benchCount = 0 }: { requests
                   </div>
                   <p className="text-xs text-slate-500 leading-relaxed font-medium">{stageDetails.desc}</p>
                   <div className="space-y-2.5 text-xs">
-                    <div className="flex justify-between items-center"><span className="font-semibold flex items-center gap-1.5 text-slate-650"><Briefcase className="h-3.5 w-3.5 text-slate-400" />Avg Project Span</span><span className="font-bold text-slate-800">{stageDetails.avgDuration} weeks</span></div>
-                    <div className="flex justify-between items-center"><span className="font-semibold flex items-center gap-1.5 text-slate-650"><AlertTriangle className="h-3.5 w-3.5 text-slate-400" />Hiring Alerts (&lt;6mo)</span><span className={cn("font-bold", stageDetails.hiringRisks > 0 ? "text-rose-600" : "text-slate-800")}>{stageDetails.hiringRisks > 0 ? `${stageDetails.hiringRisks} critical` : "0 alerts"}</span></div>
+                    <div className="flex justify-between items-center"><span className="font-semibold flex items-center gap-1.5 text-slate-650"><Briefcase className="h-3.5 w-3.5 text-slate-400" />Avg duration</span><span className="font-bold text-slate-800">{stageDetails.avgDuration} weeks</span></div>
+                    <div className="flex justify-between items-center"><span className="font-semibold flex items-center gap-1.5 text-slate-650"><AlertTriangle className="h-3.5 w-3.5 text-slate-400" />Urgent hires (&lt;6mo)</span><span className={cn("font-bold", stageDetails.hiringRisks > 0 ? "text-rose-600" : "text-slate-800")}>{stageDetails.hiringRisks > 0 ? `${stageDetails.hiringRisks} critical` : "None"}</span></div>
                   </div>
                   <div className="space-y-1.5 pt-3 border-t border-slate-100">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><Award className="h-3.5 w-3.5" />Critical Skillsets</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><Award className="h-3.5 w-3.5" />Key Skills</p>
                     <div className="flex flex-wrap gap-1.5 pt-0.5">
                       {STAGE_SKILLS[stageDetails.key]?.map(skill => <Badge key={skill} variant="outline" className="text-[9px] font-bold uppercase py-0.5 px-2 bg-slate-50/50 text-slate-600 border-slate-200">{skill}</Badge>)}
                     </div>
@@ -293,13 +295,13 @@ export function PipelineAnalyticsClient({ requests, benchCount = 0 }: { requests
           </div>
         </div>
 
-        <SectionCard title="Pipeline Transition Velocity" description="Conversion drop-off rate and resourcing flow velocity" className="lg:col-span-3" action={<TrendingUp className="h-4 w-4 text-slate-400" />}>
+        <SectionCard title="Stage-to-Stage Conversion" description="How much resource demand carries through each stage" className="lg:col-span-3" action={<TrendingUp className="h-4 w-4 text-slate-400" />}>
           <div className="space-y-5 pt-2">
             <div className="divide-y divide-slate-100">
               {flowStats.slice(0, 5).map((stage, idx) => {
                 const next = flowStats[idx + 1]!;
                 const conv = stage.fte > 0 ? Math.round(next.fte / stage.fte * 100) : 0;
-                const [lbl, clr, bar] = conv < 50 ? ["Leakage Bottleneck", "text-rose-600", "bg-rose-500"] : conv < 80 ? ["Stable Retention", "text-amber-600", "bg-amber-500"] : ["Optimal Flow", "text-emerald-600", "bg-emerald-500"];
+                const [lbl, clr, bar] = conv < 50 ? ["High drop-off", "text-rose-600", "bg-rose-500"] : conv < 80 ? ["Moderate", "text-amber-600", "bg-amber-500"] : ["Healthy", "text-emerald-600", "bg-emerald-500"];
                 return (
                   <div key={idx} className="py-3.5 first:pt-1 last:pb-1 flex flex-col gap-2">
                     <div className="flex items-center justify-between">
@@ -328,8 +330,8 @@ export function PipelineAnalyticsClient({ requests, benchCount = 0 }: { requests
               const best = ts.reduce((a, b) => b.rate > a.rate ? b : a, ts[0]!);
               return (
                 <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs text-slate-500 leading-relaxed font-semibold">
-                  <p className="font-bold text-slate-700 flex items-center gap-1.5 mb-1 text-[9px] uppercase tracking-wider"><RefreshCw className="h-3 w-3 text-slate-400" />Resourcing Flow Insight</p>
-                  {worst && best ? <>Biggest leakage: <span className="text-rose-600 font-bold">{worst.from} &rarr; {worst.to}</span> ({worst.rate}% retention). Strongest carry-through: <span className="text-emerald-600 font-bold">{best.from} &rarr; {best.to}</span> ({best.rate}% retention). Focus scoping discipline at the {worst.from} stage.</> : "No transition data available."}
+                  <p className="font-bold text-slate-700 flex items-center gap-1.5 mb-1 text-[9px] uppercase tracking-wider"><RefreshCw className="h-3 w-3 text-slate-400" />Key Insight</p>
+                  {worst && best ? <>Biggest drop-off: <span className="text-rose-600 font-bold">{worst.from} &rarr; {worst.to}</span> ({worst.rate}% kept). Best retention: <span className="text-emerald-600 font-bold">{best.from} &rarr; {best.to}</span> ({best.rate}% kept). Tighten scoping at the {worst.from} stage.</> : "No transition data available."}
                 </div>
               );
             })()}
@@ -339,7 +341,7 @@ export function PipelineAnalyticsClient({ requests, benchCount = 0 }: { requests
 
       {/* 5 — Funnel + Waterfall */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-        <SectionCard title="Pipeline Funnel" description="Opportunities and capacity load by HubSpot stage" className="lg:col-span-2" action={<Activity className="h-4 w-4 text-slate-400" />}>
+        <SectionCard title="Pipeline Funnel" description="Deals and resource demand by stage" className="lg:col-span-2" action={<Activity className="h-4 w-4 text-slate-400" />}>
           {funnelData.length > 0 ? (
             <div className="space-y-4 pt-2">
               {funnelData.map((d, i) => {
@@ -369,7 +371,7 @@ export function PipelineAnalyticsClient({ requests, benchCount = 0 }: { requests
           ) : <p className="text-sm text-muted-foreground text-center py-10">No active pipeline data.</p>}
         </SectionCard>
 
-        <SectionCard title="Headcount Cumulative Build" description="Confidence-weighted FTE build-up per stage — cumulative waterfall" className="lg:col-span-3" action={<Scale className="h-4 w-4 text-slate-400" />}>
+        <SectionCard title="Cumulative Resource Demand" description="Expected FTE building up across stages" className="lg:col-span-3" action={<Scale className="h-4 w-4 text-slate-400" />}>
           <div className="pt-2">
             <ResponsiveContainer width="100%" height={230}>
               <ComposedChart data={waterfallData} barCategoryGap="20%">

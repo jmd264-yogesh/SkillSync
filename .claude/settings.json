@@ -22,7 +22,11 @@
       "Bash(git branch*)",
       "Bash(git fetch*)",
       "Bash(git stash list)",
-      "Bash(node .claude/hooks/*)"
+      "Bash(node .claude/hooks/*)",
+      "Bash(git config *)",
+      "Bash(node --experimental-sqlite -e ' *)",
+      "PowerShell($p = Get-CimInstance Win32_Process -Filter \"ProcessId=4596\" -ErrorAction SilentlyContinue; if \\($p\\) { $p.CommandLine } else { \"PID 4596 not found\" }; Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Select-Object ProcessId, @{n='CL';e={$_.CommandLine.Substring\\(0,[Math]::Min\\(120,$_.CommandLine.Length\\)\\)}} | Format-Table -Auto -Wrap)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code} in %{time_total}s\\\\n\" http://localhost:3002/login)"
     ],
     "deny": []
   },
