@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { MATCH_WEIGHTS, CLIENT_TIER_BOOST } from "@/lib/constants";
+import { getEmployeeExtensionLikelihoodMap } from "@/server/services/extension-forecast.service";
 
 export type MatchSignal = "REDEPLOY" | "HIRE" | "PARTIAL_HIRE";
 
@@ -51,6 +52,12 @@ export interface MatchResult {
   totalProjects: number;
   // COE affinity
   coeAffinityMatch: boolean;            // candidate has worked on a project matching the requested COE
+  // Project Extension Likelihood Signal
+  projectExtensionData?: {
+    extensionBand: string;
+    extensionScore: number;
+    clientName: string;
+  };
   // Risk
   riskFlags: RiskFlag[];
 }
@@ -83,6 +90,8 @@ export async function computeMatchRanking(params: {
     start: windowStart ?? now,
     end: windowEnd ?? new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000),
   };
+
+  const extensionMap = await getEmployeeExtensionLikelihoodMap();
 
   const employees = await db.employee.findMany({
     where: roleWhere,
@@ -284,6 +293,12 @@ export async function computeMatchRanking(params: {
     // Under-utilized: logging significantly fewer hours than nominal allocation
     if (underUtilized) riskFlags.push("UNDER_UTILIZED");
 
+    // Extension Data
+    const extInfo = extensionMap.get(emp.id);
+    const projectExtensionData = extInfo
+      ? { extensionBand: extInfo.band, extensionScore: extInfo.score, clientName: extInfo.clientName }
+      : undefined;
+
     return {
       employeeId: emp.id,
       employeeCode: emp.employeeCode,
@@ -309,12 +324,13 @@ export async function computeMatchRanking(params: {
       previousClients,
       totalProjects: distinctProjectCount,
       coeAffinityMatch,
+      projectExtensionData,
       riskFlags,
     };
   });
 
   // Internal-first: sort by signal tier first (REDEPLOY > PARTIAL_HIRE > HIRE),
-  // then by matchScore descending within each tier.
+  // then prioritize candidates from NON-EXTENDING or LOW-EXTENSION projects over high-extension projects.
   const SIGNAL_ORDER: Record<MatchSignal, number> = { REDEPLOY: 0, PARTIAL_HIRE: 1, HIRE: 2 };
 
   return results
@@ -323,7 +339,16 @@ export async function computeMatchRanking(params: {
         const tierDiff = SIGNAL_ORDER[a.signal] - SIGNAL_ORDER[b.signal];
         if (tierDiff !== 0) return tierDiff;
       }
-      return b.matchScore - a.matchScore;
+
+      // Extension likelihood penalty: If allocated to a project likely to extend (high extension score),
+      // penalize effective ranking so resources on low-extension/ending projects are suggested first!
+      const aExtPen = a.projectExtensionData ? (a.projectExtensionData.extensionScore / 100) * 20 : 0;
+      const bExtPen = b.projectExtensionData ? (b.projectExtensionData.extensionScore / 100) * 20 : 0;
+
+      const aEffectiveScore = a.matchScore - aExtPen;
+      const bEffectiveScore = b.matchScore - bExtPen;
+
+      return bEffectiveScore - aEffectiveScore;
     })
     .slice(0, topN);
 }

@@ -258,9 +258,11 @@ function scoreColor(s: number) {
 function ScoreBreakdown({
   scores,
   unmetSkills,
+  projectExtensionData,
 }: {
   scores: CandidateScores;
   unmetSkills: string[];
+  projectExtensionData?: { extensionBand: string; extensionScore: number; clientName: string };
 }) {
   return (
     <div className="flex flex-col sm:flex-row gap-5 px-4 py-3">
@@ -289,6 +291,41 @@ function ScoreBreakdown({
               </div>
             );
           })}
+
+          {/* Project Extension Likelihood Signal Bar */}
+          {projectExtensionData ? (
+            <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
+              <span className="text-xs font-medium text-slate-600 w-24 shrink-0 truncate" title={`Project Extension (${projectExtensionData.clientName})`}>
+                Project Extension
+              </span>
+              <div className="flex-1 bg-slate-200 rounded-full h-1.5 overflow-hidden min-w-0">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    projectExtensionData.extensionBand === "VERY_LIKELY" || projectExtensionData.extensionBand === "LIKELY"
+                      ? "bg-amber-500"
+                      : "bg-emerald-500"
+                  }`}
+                  style={{ width: `${Math.max(5, projectExtensionData.extensionScore)}%` }}
+                />
+              </div>
+              <span className="text-xs font-semibold tabular-nums w-7 text-right text-slate-700">
+                {projectExtensionData.extensionScore}%
+              </span>
+              <span className={`text-[10px] font-bold w-3 ${
+                projectExtensionData.extensionBand === "VERY_LIKELY" || projectExtensionData.extensionBand === "LIKELY" ? "text-amber-600" : "text-emerald-600"
+              }`}>
+                {projectExtensionData.extensionBand === "VERY_LIKELY" || projectExtensionData.extensionBand === "LIKELY" ? "▲" : "▼"}
+              </span>
+              <span className="text-[10px] text-slate-400 w-10 text-right truncate" title={projectExtensionData.clientName}>
+                {projectExtensionData.clientName}
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 pt-1 border-t border-slate-100 text-[11px] text-slate-400">
+              <span className="w-24 shrink-0">Project Extension</span>
+              <span>Bench / No active project allocation (0% extension risk)</span>
+            </div>
+          )}
         </div>
       </div>
       {unmetSkills.length > 0 && (
@@ -1084,6 +1121,18 @@ export function SimulatorClient({ skills }: SimulatorClientProps) {
                                           ↑ Promoted
                                         </span>
                                       )}
+                                      {c.projectExtensionData && (
+                                        <span
+                                          className={`ml-1.5 inline-flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full border ${
+                                            c.projectExtensionData.extensionBand === "VERY_LIKELY" || c.projectExtensionData.extensionBand === "LIKELY"
+                                              ? "bg-amber-50 text-amber-700 border-amber-200"
+                                              : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                          }`}
+                                          title={`Current Project (${c.projectExtensionData.clientName}): ${c.projectExtensionData.extensionBand.replace("_", " ")} to extend (${c.projectExtensionData.extensionScore}% score)`}
+                                        >
+                                          Ext: {c.projectExtensionData.clientName} ({c.projectExtensionData.extensionScore}%)
+                                        </span>
+                                      )}
                                       {hasRisk && (
                                         <span className="ml-1.5 text-[9px] text-amber-600 font-semibold uppercase">
                                           {c.riskFlags.slice(0, 2).join(" · ")}
@@ -1108,7 +1157,11 @@ export function SimulatorClient({ skills }: SimulatorClientProps) {
                                   {isExpanded && (
                                     <tr key={`${c.employeeId}-detail`} className="bg-slate-50 border-b">
                                       <td colSpan={7} className="p-0">
-                                        <ScoreBreakdown scores={c.scores} unmetSkills={c.unmetSkills} />
+                                        <ScoreBreakdown
+                                          scores={c.scores}
+                                          unmetSkills={c.unmetSkills}
+                                          projectExtensionData={c.projectExtensionData}
+                                        />
                                       </td>
                                     </tr>
                                   )}

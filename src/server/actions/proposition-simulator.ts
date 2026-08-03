@@ -327,6 +327,11 @@ export interface RoleCandidate {
   riskFlags: string[];
   scores: CandidateScores;
   unmetSkills: string[];
+  projectExtensionData?: {
+    extensionBand: string;
+    extensionScore: number;
+    clientName: string;
+  };
   recommendation: string;
   isPromoted: boolean;
   promotedFrom: string | null;
@@ -345,10 +350,15 @@ function deriveRecommendation(
   riskFlags: string[],
   scores: { skill: number; competency: number; availability: number; billability: number; evidence: number },
   unmetSkills: string[],
+  projectExtensionData?: { extensionBand: string; extensionScore: number; clientName: string },
 ): string {
   if (riskFlags.includes("LEAVER")) return "Leaving soon — confirm notice period before committing";
   if (riskFlags.includes("OVER_ALLOCATED")) return "Over-allocated — resolve current assignment first";
   if (signal === "HIRE") return "No internal role match — recommend external hire for this position";
+
+  if (projectExtensionData && (projectExtensionData.extensionBand === "VERY_LIKELY" || projectExtensionData.extensionBand === "LIKELY")) {
+    return `Low priority candidate: Current project (${projectExtensionData.clientName}) is ${projectExtensionData.extensionBand.replace("_", " ").toLowerCase()} to extend (${projectExtensionData.extensionScore}% score)`;
+  }
 
   const weakAreas: string[] = [];
   const strongAreas: string[] = [];
@@ -410,9 +420,10 @@ export async function findResourcesForSimulation(
           evidence:     Math.round(c.evidenceStrength ?? 0),
         };
         const unmetSkills = (c.unmetSkills ?? []) as string[];
+        const extData = c.projectExtensionData;
         const baseRec = deriveRecommendation(
           c.matchScore, c.availableFTE, c.signal, c.riskFlags as string[],
-          scores, unmetSkills,
+          scores, unmetSkills, extData
         );
         const recommendation = isPromoted
           ? `Promoted from ${promotedFrom ?? "junior role"} — ${baseRec.toLowerCase()}`
@@ -430,6 +441,7 @@ export async function findResourcesForSimulation(
           riskFlags:       c.riskFlags as string[],
           scores,
           unmetSkills,
+          projectExtensionData: extData,
           recommendation,
           isPromoted,
           promotedFrom,

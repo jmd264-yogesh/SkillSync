@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Settings2, Award, Users, Link2,
   Search, BarChart3, ClipboardCheck, FileText, GraduationCap,
   ArrowUpRight, FileBarChart, Target, UserCheck, LayoutGrid,
-  Zap, HeartPulse, TrendingUp, CalendarRange, Bot, Briefcase, Presentation, ClipboardList, Lightbulb,
+  Zap, HeartPulse, TrendingUp, CalendarRange, Bot, Briefcase, Presentation, ClipboardList, Lightbulb, Radar,
   LineChart, ChevronDown, GitCompare,
 } from "lucide-react";
 import {
@@ -49,6 +49,7 @@ const resourcingMoreItems: NavItem[] = [
   { title: "Pipeline Inception", href: "/admin/resourcing/pipeline",      icon: Lightbulb },
   { title: "Pipeline Kanban",    href: "/admin/resourcing/kanban",        icon: LayoutGrid },
   { title: "PM Questionnaire",   href: "/admin/resourcing/questionnaire", icon: ClipboardList },
+  { title: "Extension Radar",   href: "/admin/resourcing/extension",     icon: Radar },
   { title: "Simulator",          href: "/admin/resourcing/simulator",     icon: TrendingUp },
   { title: "Pipeline Outlook",   href: "/admin/resourcing/outlook",       icon: CalendarRange },
   { title: "Pitch / Judge View", href: "/pitch",                          icon: Presentation },

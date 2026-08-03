@@ -847,3 +847,73 @@ model ResourceSwap {
   @@unique([projectId, resourceKey])
   @@map("resource_swaps")
 }
+
+// ─── Forecast Overview (Excel Ingest) ────────────────────────
+// One row per PortCo per data-month snapshot from the Forecast Overview Excel sheet.
+// Drives the Extension Radar module (/admin/resourcing/extension).
+
+model ForecastOverviewEntry {
+  id             String @id @default(uuid())
+
+  // Identity
+  fund           String
+  portCo         String                     @map("port_co")
+  cluster        String?
+  level          String?                    // Gold / Silver / Bronze / Servicing
+  clientLead     String?                    @map("client_lead")
+  accountOwner   String?                    @map("account_owner")
+  accountManager String?                    @map("account_manager")
+  teamOwner      String?                    @map("team_owner")
+
+  // Trend status: ▲▲ / ▲ / ▶ / ▼ / ▼▼
+  status         String?
+
+  // Prior month (Jun-26) — momentum baseline
+  bookedPrior    Float   @default(0)        @map("booked_prior")
+
+  // Current month (Jul-26)
+  bookedCurrent     Float @default(0)       @map("booked_current")
+  unweightedCurrent Float @default(0)       @map("unweighted_current")
+  weightedCurrent   Float @default(0)       @map("weighted_current")
+
+  // Month +1 (Aug-26)
+  bookedMonth1     Float @default(0)        @map("booked_month1")
+  unweightedMonth1 Float @default(0)        @map("unweighted_month1")
+  weightedMonth1   Float @default(0)        @map("weighted_month1")
+
+  // Month +2 (Sep-26)
+  bookedMonth2     Float @default(0)        @map("booked_month2")
+  unweightedMonth2 Float @default(0)        @map("unweighted_month2")
+  weightedMonth2   Float @default(0)        @map("weighted_month2")
+
+  // Month +3 (Oct-26)
+  bookedMonth3     Float @default(0)        @map("booked_month3")
+  unweightedMonth3 Float @default(0)        @map("unweighted_month3")
+  weightedMonth3   Float @default(0)        @map("weighted_month3")
+
+  // Full-year totals
+  fyBooked       Float @default(0)          @map("fy_booked")
+  fyUnweighted   Float @default(0)          @map("fy_unweighted")
+  fyWeighted     Float @default(0)          @map("fy_weighted")
+
+  // Computed extension forecast
+  extensionScore Float  @default(0)         @map("extension_score")  // 0–100
+  extensionBand  String @default("UNKNOWN") @map("extension_band")   // VERY_LIKELY / LIKELY / UNCERTAIN / UNLIKELY
+
+  // Snapshot context
+  dataMonth      String                     @map("data_month") // "2026-07"
+
+  // Manual Overrides (PM / RM intent inputs)
+  overrideStatus    String?                    @map("override_status") // "CONFIRMED_EXTENSION" | "LIKELY_EXTENSION" | "UNLIKELY_EXTENSION" | "CONFIRMED_DROPPING"
+  overrideNotes     String?                    @map("override_notes")
+  overrideUpdatedAt DateTime?                  @map("override_updated_at")
+
+  createdAt      DateTime @default(now())   @map("created_at")
+  updatedAt      DateTime @updatedAt        @map("updated_at")
+
+  @@unique([fund, portCo, dataMonth])
+  @@index([cluster])
+  @@index([level])
+  @@index([extensionBand])
+  @@map("forecast_overview_entries")
+}
