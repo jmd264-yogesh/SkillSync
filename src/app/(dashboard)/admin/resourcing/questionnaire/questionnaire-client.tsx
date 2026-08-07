@@ -325,7 +325,7 @@ export function QuestionnaireClient({ skills, designations, coes }: Props) {
             </div>
 
             <div className="space-y-1.5">
-              <Label>Minimum Competency Level (1–5)</Label>
+              <Label>Minimum Competency Level (1-5)</Label>
               <Controller
                 name="competencyLevel"
                 control={control}

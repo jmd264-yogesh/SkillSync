@@ -82,7 +82,7 @@ Explain the fit in 2–4 sentences.`;
         setTimeout(() => reject(new Error("timeout")), AI_TIMEOUT_MS),
       ),
     ]);
-    return response.response.text();
+    return response.response.text().replace(/[—–]/g, "-");
   } catch {
     return fallbackRationale(
       candidate,

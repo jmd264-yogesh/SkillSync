@@ -21,12 +21,13 @@ import type {
   ExtensionForecastRow,
   ExtensionSummary,
   ExtensionSignal,
+  ExtensionBand,
 } from "@/server/services/extension-forecast.service";
 
 // ── Helpers ───────────────────────────────────────────────────
 
 function fmt(n: number): string {
-  if (n === 0) return "—";
+  if (n === 0) return "-";
   if (n >= 1_000_000) return `£${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `£${(n / 1_000).toFixed(0)}K`;
   return `£${n.toFixed(0)}`;
@@ -271,12 +272,19 @@ function ExtensionCard({
   const hasOverride = Boolean(row.overrideStatus && row.overrideStatus !== "NONE");
 
   return (
-    <div className={`rounded-xl border ${cfg.border} ${cfg.bg} p-4 flex flex-col justify-between hover:shadow-md transition-all duration-200 relative group space-y-3`}>
+    <div className="rounded-xl border border-slate-200 bg-white p-4 flex flex-col justify-between hover:shadow-md transition-all duration-200 relative group space-y-3">
       {/* Top Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0 pr-1">
-          <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="flex items-center gap-1 flex-wrap">
             <span className="text-[14px] font-bold text-slate-900 truncate tracking-tight">{row.portCo}</span>
+            <button
+              onClick={() => onEdit(row)}
+              className="p-1 rounded-md text-slate-300 hover:text-violet-600 hover:bg-violet-50 transition-all shrink-0"
+              title="Override extension data"
+            >
+              <Edit3 className="h-3.5 w-3.5" />
+            </button>
           </div>
           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
             <span className="text-[11px] font-medium text-slate-500">Fund: {row.fund}</span>
@@ -293,31 +301,22 @@ function ExtensionCard({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          <div className="flex flex-col items-end gap-0.5">
-            <ScoreRing score={row.effectiveScore} band={row.effectiveBand} />
-            <span className={`text-[9px] font-bold uppercase tracking-wider ${cfg.text}`}>
-              {cfg.label}
-            </span>
-          </div>
-          <button
-            onClick={() => onEdit(row)}
-            className="p-1.5 rounded-lg bg-white/90 border border-slate-200 text-slate-400 hover:text-violet-600 hover:border-violet-300 hover:bg-white transition-all shadow-2xs"
-            title="Override extension data"
-          >
-            <Edit3 className="h-3.5 w-3.5" />
-          </button>
+        <div className="flex flex-col items-center gap-1 shrink-0">
+          <ScoreRing score={row.effectiveScore} band={row.effectiveBand} />
+          <span className={`text-[9px] font-bold uppercase tracking-wider ${cfg.text}`}>
+            {cfg.label}
+          </span>
         </div>
       </div>
 
       {row.overrideNotes && (
-        <div className="text-[11px] text-slate-600 bg-white/80 p-2 rounded-lg border border-slate-200/60 italic leading-snug">
+        <div className="text-[11px] text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-200/60 italic leading-snug">
           "{row.overrideNotes}"
         </div>
       )}
 
       {/* Monthly Breakdown (Always visible) */}
-      <div className="border-t border-white/80 pt-2.5 space-y-1.5">
+      <div className="border-t border-slate-100 pt-2.5 space-y-1.5">
         <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Monthly Breakdown</div>
         <div className="grid grid-cols-3 gap-1 text-[10px] font-semibold text-slate-400 px-1">
           <span>Month</span><span>Booked</span><span>Weighted</span>
@@ -336,7 +335,7 @@ function ExtensionCard({
         ))}
 
         {(row.accountManager || row.teamOwner) && (
-          <div className="flex items-center gap-3 pt-2 border-t border-white/60 text-[11px] text-slate-500">
+          <div className="flex items-center gap-3 pt-2 border-t border-slate-100 text-[11px] text-slate-500">
             {row.accountManager && <span><span className="font-medium">AM:</span> {row.accountManager}</span>}
             {row.teamOwner && <span><span className="font-medium">TO:</span> {row.teamOwner}</span>}
           </div>

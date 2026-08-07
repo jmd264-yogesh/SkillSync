@@ -19,7 +19,7 @@ const DELIVERABLES = [
     href: "/admin/resourcing/match",
     what: "Two-dimension scoring: Technical Skill × Consulting Competency, ranked by composite 100-point match score.",
     decision: "REDEPLOY · HIRE · PARTIAL HIRE",
-    ai: "Match rationale - 2–4 sentence explanation of fit for each top candidate.",
+    ai: "Match rationale - 2-4 sentence explanation of fit for each top candidate.",
     color: "#38BDF8",
   },
   {

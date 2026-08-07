@@ -54,7 +54,7 @@ export function CopilotChat() {
   }
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 gap-4">
+    <div className="flex flex-col h-[calc(100vh-13rem)] min-h-0 gap-4">
       {/* Suggested questions (shown only when empty) */}
       {history.length === 0 && (
         <div className="space-y-2">
@@ -74,7 +74,7 @@ export function CopilotChat() {
       )}
 
       {/* Message history */}
-      <div className="flex-1 overflow-y-auto space-y-3 min-h-[300px] max-h-[60vh]">
+      <div className="flex-1 overflow-y-auto space-y-3 min-h-0">
         {history.map((msg, i) => (
           <div key={i} className={cn("flex gap-3", msg.role === "user" ? "justify-end" : "justify-start")}>
             {msg.role === "assistant" && (

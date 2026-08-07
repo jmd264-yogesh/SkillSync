@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ResponsiveContainer, ComposedChart, Bar, XAxis, YAxis,
@@ -12,6 +13,7 @@ import {
   Activity, Scale, ArrowRight, Info, Award, RefreshCw, ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { normalizeResourceRequest } from "@/lib/role-mapping";
 import type { PipelineRequestWithContext } from "@/server/services/pipeline.service";
 import { SectionCard, KpiCard } from "../../../analytics/analytics-client";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
@@ -19,10 +21,15 @@ import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/comp
 const PRIMARY = "#19105b";
 const SECONDARY = "#ff6196";
 
+/** FTE demand for a deal, parsed from its resource request (resource_recommended is unset in the data). */
+function dealFte(r: { resourcesRequested: string | null }): number {
+  return r.resourcesRequested ? normalizeResourceRequest(r.resourcesRequested).count : 0;
+}
+
 const STAGE_CONFIG = [
   { key: "LEAD",        label: "Opportunity Inception",  shortLabel: "Inception", confidence: 20,  color: "#cbd5e1" },
-  { key: "PROPOSAL",   label: "Make It Real",            shortLabel: "Proposal",  confidence: 20,  color: "#a5b4fc" },
-  { key: "SOW_PENDING",label: "Build Proposition",       shortLabel: "Build",     confidence: 40,  color: "#ff8da1" },
+  { key: "PROPOSAL",   label: "Make It Real",            shortLabel: "Proposal",  confidence: 40,  color: "#a5b4fc" },
+  { key: "SOW_PENDING",label: "Build Proposition",       shortLabel: "Build",     confidence: 60,  color: "#ff8da1" },
   { key: "SOW_SIGNED", label: "SOW Signed",              shortLabel: "Signed",    confidence: 80,  color: SECONDARY },
   { key: "ACTIVE",     label: "Active Delivery",         shortLabel: "Active",    confidence: 100, color: PRIMARY },
   { key: "RAMP_DOWN",  label: "Extension / Ramp Down",   shortLabel: "Ext/RD",    confidence: 100, color: "#6366f1" },
@@ -90,8 +97,8 @@ export function PipelineAnalyticsClient({ requests, benchCount = 0 }: { requests
   const [selectedStage, setSelectedStage] = useState<string>("LEAD");
 
   const kpis = useMemo(() => {
-    const grossFTEs = active.reduce((s, r) => s + (r.resourceRecommended ?? 0), 0);
-    const weightedFTEs = active.reduce((s, r) => s + (r.resourceRecommended ?? 0) * (r.confidence / 100), 0);
+    const grossFTEs = active.reduce((s, r) => s + dealFte(r), 0);
+    const weightedFTEs = active.reduce((s, r) => s + dealFte(r) * (r.confidence / 100), 0);
     const durationDeals = active.filter(r => r.numberOfWeeks);
     const avgDuration = durationDeals.reduce((s, r) => s + (r.numberOfWeeks ?? 0), 0) / (durationDeals.length || 1);
     return {
@@ -105,19 +112,20 @@ export function PipelineAnalyticsClient({ requests, benchCount = 0 }: { requests
 
   const executiveBrief = useMemo(() => {
     const slCounts = new Map<string, number>();
-    active.forEach(r => { if (r.serviceLine && r.resourceRecommended) slCounts.set(r.serviceLine, (slCounts.get(r.serviceLine) || 0) + r.resourceRecommended); });
+    active.forEach(r => { const f = dealFte(r); if (r.serviceLine && f) slCounts.set(r.serviceLine, (slCounts.get(r.serviceLine) || 0) + f); });
     const sorted = Array.from(slCounts.entries()).sort((a, b) => b[1] - a[1]);
     const top = sorted[0]?.[0] || "Value Creation";
     const topFte = sorted[0]?.[1] || 0;
     const cr = kpis.grossFTEs > 0 ? (kpis.weightedFTEs / kpis.grossFTEs * 100).toFixed(0) : "0";
-    return `The active pipeline contains ${kpis.totalDeals} opportunities representing ${kpis.grossFTEs.toFixed(1)} Gross FTE demand. With probability weighting, the confidence-adjusted demand is ${kpis.weightedFTEs.toFixed(1)} FTEs (${cr}% expected conversion rate). Primary service line: ${top} (${topFte.toFixed(1)} FTEs). ${kpis.atRisk} opportunities require urgent hiring action — start dates within 6 months without allocated bench.`;
+    return `The active pipeline contains ${kpis.totalDeals} opportunities representing ${kpis.grossFTEs.toFixed(1)} Gross FTE demand. With probability weighting, the confidence-adjusted demand is ${kpis.weightedFTEs.toFixed(1)} FTEs (${cr}% expected conversion rate). Primary service line: ${top} (${topFte.toFixed(1)} FTEs). ${kpis.atRisk} opportunities require urgent hiring action - start dates within 6 months without allocated bench.`;
   }, [active, kpis]);
 
   const flowStats = useMemo(() => STAGE_FLOW_CONFIG.map((cfg) => {
     const deals = active.filter((r) => normalizeStage(r.dealStage) === cfg.key);
-    const fte = deals.reduce((s, r) => s + (r.resourceRecommended ?? 0), 0);
+    const fte = deals.reduce((s, r) => s + dealFte(r), 0);
     let winProb = 0.2;
-    if (cfg.key === "SOW_PENDING") winProb = 0.4;
+    if (cfg.key === "PROPOSAL") winProb = 0.4;
+    else if (cfg.key === "SOW_PENDING") winProb = 0.6;
     else if (cfg.key === "SOW_SIGNED") winProb = 0.8;
     else if (cfg.key === "ACTIVE" || cfg.key === "RAMP_DOWN") winProb = 1.0;
     const atRiskDeals = (cfg.key === "ACTIVE" || cfg.key === "RAMP_DOWN") ? [] : deals.filter(r => r.hiringLeadTimeAlert);
@@ -130,7 +138,7 @@ export function PipelineAnalyticsClient({ requests, benchCount = 0 }: { requests
 
   const funnelData = useMemo(() => STAGE_CONFIG.map((cfg) => {
     const deals = active.filter((r) => normalizeStage(r.dealStage) === cfg.key);
-    const fte = deals.reduce((s, r) => s + (r.resourceRecommended ?? 0), 0);
+    const fte = deals.reduce((s, r) => s + dealFte(r), 0);
     return { name: cfg.label, value: deals.length, fte, expectedFte: Math.round(fte * cfg.confidence / 100 * 10) / 10, confidence: cfg.confidence, fill: cfg.color };
   }).filter(d => d.value > 0), [active]);
   const maxFunnelVal = Math.max(Math.max(...funnelData.map(d => d.value), 1));
@@ -141,7 +149,7 @@ export function PipelineAnalyticsClient({ requests, benchCount = 0 }: { requests
     for (const cfg of STAGE_CONFIG) {
       const deals = active.filter((r) => normalizeStage(r.dealStage) === cfg.key);
       if (!deals.length) continue;
-      const raw = deals.reduce((s, r) => s + (r.resourceRecommended ?? 0), 0);
+      const raw = deals.reduce((s, r) => s + dealFte(r), 0);
       const weighted = Math.round((raw * cfg.confidence) / 100 * 10) / 10;
       const base = Math.round(running * 10) / 10;
       running = Math.round((running + weighted) * 10) / 10;
@@ -154,7 +162,7 @@ export function PipelineAnalyticsClient({ requests, benchCount = 0 }: { requests
   return (
     <div className="flex flex-col gap-6">
 
-      {/* 1 — Executive Brief */}
+      {/* 1 - Executive Brief */}
       <div className="bg-gradient-to-r from-indigo-50/80 via-purple-50/30 to-slate-50/50 border border-indigo-100/50 p-6 rounded-2xl flex items-start gap-4 shadow-sm relative overflow-hidden">
         <div className="absolute top-0 right-0 h-32 w-32 bg-indigo-200/20 rounded-full blur-2xl translate-x-12 -translate-y-3" />
         <div className="h-10 w-10 bg-indigo-900 rounded-xl flex items-center justify-center shrink-0 shadow-md">
@@ -166,7 +174,7 @@ export function PipelineAnalyticsClient({ requests, benchCount = 0 }: { requests
         </div>
       </div>
 
-      {/* 2 — KPIs */}
+      {/* 2 - KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard label="Active Deals" value={kpis.totalDeals} sub={`Avg. duration: ${kpis.avgDuration} weeks`} icon={<Briefcase className="h-5 w-5 text-indigo-950" />} accent="bg-slate-50 text-indigo-950 border-slate-100" />
         <KpiCard label="Resources Needed" value={`${kpis.grossFTEs} FTE`} sub="Total across all active deals" icon={<Users className="h-5 w-5 text-[#ff6196]" />} accent="bg-rose-50/50 text-[#ff6196] border-[#ff6196]/10" />
@@ -174,16 +182,16 @@ export function PipelineAnalyticsClient({ requests, benchCount = 0 }: { requests
         <KpiCard label="Urgent Hires Needed" value={kpis.atRisk} sub="Start < 6 months out" icon={<AlertTriangle className="h-5 w-5 text-rose-600" />} accent="bg-rose-50/50 text-rose-600 border-rose-200" />
       </div>
 
-      {/* 3 — Flow Timeline */}
+      {/* 3 - Flow Timeline */}
       <SectionCard title="Pipeline Flow" description="Deals and resource demand at each stage" action={<Activity className="h-4 w-4 text-slate-400" />} flush className="relative overflow-hidden">
         <div className="overflow-x-auto pb-4 pt-4 px-6 w-full">
-          <div className="min-w-[920px] relative h-[420px]">
-            <div className="w-[84%] h-6 bg-slate-100 rounded-full border border-slate-200/50 absolute left-[8%] top-[210px] -translate-y-1/2 shadow-inner overflow-hidden">
+          <div className="min-w-[920px] relative h-[480px]">
+            <div className="w-[84%] h-6 bg-slate-100 rounded-full border border-slate-200/50 absolute left-[8%] top-[240px] -translate-y-1/2 shadow-inner overflow-hidden">
               <motion.div initial={{ width: 0 }} animate={{ width: "100%" }} transition={{ duration: 0.8, ease: "easeOut" }} className="h-full rounded-full bg-gradient-to-r from-slate-400 via-indigo-500 to-[#ff6196] flex items-center justify-around px-10">
                 {[...Array(6)].map((_, i) => <ChevronRight key={i} className="h-4 w-4 text-white/75 shrink-0" />)}
               </motion.div>
             </div>
-            <div className="w-[84%] flex justify-between items-center absolute left-[8%] top-[210px] -translate-y-1/2 z-10">
+            <div className="w-[84%] flex justify-between items-center absolute left-[8%] top-[240px] -translate-y-1/2 z-10">
               {flowStats.map((stage, idx) => {
                 const isSelected = selectedStage === stage.key;
                 const isUp = stage.align === "up";
@@ -218,7 +226,13 @@ export function PipelineAnalyticsClient({ requests, benchCount = 0 }: { requests
                           <span className="text-[9px] font-bold text-slate-400">{stage.key === "ACTIVE" ? "On Delivery" : stage.key === "RAMP_DOWN" ? "Post-Delivery" : "Probability"}</span>
                           <span className={cn("text-[9px] font-black", stageColor.prob)}>{stage.key === "ACTIVE" ? "LIVE ✓" : stage.key === "RAMP_DOWN" ? "EXT / ↓" : `${stage.winProb}% win`}</span>
                         </div>
-                        <p className={cn("text-[11px] font-black tracking-tight leading-tight mt-1 mb-1", stageColor.label)}>{stage.label}</p>
+                        <p className={cn("text-[11px] font-black tracking-tight leading-tight mt-1 mb-1", stageColor.label)}>
+                          {stage.key === "RAMP_DOWN" ? (
+                            <Link href="/admin/resourcing/extension" className="inline-flex items-center gap-1 hover:underline" title="Open Extension Radar">
+                              {stage.label}<ArrowRight className="h-3 w-3" />
+                            </Link>
+                          ) : stage.label}
+                        </p>
                         {stage.hiringRisks > 0 && (
                           <TooltipProvider>
                             <Tooltip>
@@ -229,7 +243,7 @@ export function PipelineAnalyticsClient({ requests, benchCount = 0 }: { requests
                                 </div>
                               </TooltipTrigger>
                               <TooltipContent side="top" className="!flex-col !items-start !gap-1 max-w-[220px] whitespace-normal">
-                                <p className="font-semibold text-[11px] border-b border-slate-700 pb-1 mb-0.5 w-full">Start &lt; 6mo — urgent hiring needed</p>
+                                <p className="font-semibold text-[11px] border-b border-slate-700 pb-1 mb-0.5 w-full">Start &lt; 6mo - urgent hiring needed</p>
                                 {stage.atRiskDeals.slice(0, 5).map((deal, di) => (
                                   <p key={di} className="text-[10px] leading-snug w-full">
                                     <span className="font-semibold text-slate-200">{deal.client ?? "Unknown"}</span>
@@ -245,7 +259,7 @@ export function PipelineAnalyticsClient({ requests, benchCount = 0 }: { requests
                         <div className="mt-2 pt-1.5 border-t border-slate-100 space-y-1 text-[9px] font-semibold text-slate-500">
                           <div className="flex justify-between"><span>Deals</span><span className="font-bold text-slate-700">{stage.dealCount}</span></div>
                           <div className="flex justify-between"><span>Resources needed</span><span className="font-bold text-slate-700">{stage.fte.toFixed(1)} FTE</span></div>
-                          <div className="flex justify-between"><span>Expected (weighted)</span><span className={cn("font-bold", stage.hiringRisks > 0 ? "text-rose-600" : "text-slate-700")}>{stage.weightedFte.toFixed(1)} FTE</span></div>
+                          <div className="flex justify-between"><span>Win-weighted need</span><span className={cn("font-bold", stage.hiringRisks > 0 ? "text-rose-600" : "text-slate-700")}>{stage.weightedFte.toFixed(1)} FTE</span></div>
                           <div className="flex justify-between"><span>Avg duration</span><span className="font-bold text-slate-700">{stage.avgDuration} wks</span></div>
                         </div>
                       </motion.div>
@@ -258,7 +272,7 @@ export function PipelineAnalyticsClient({ requests, benchCount = 0 }: { requests
         </div>
       </SectionCard>
 
-      {/* 4 — Stage Details + Transition Velocity */}
+      {/* 4 - Stage Details + Transition Velocity */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm flex flex-col overflow-hidden lg:col-span-2">
           <div className="px-6 pt-5 pb-3 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/20">
@@ -275,7 +289,7 @@ export function PipelineAnalyticsClient({ requests, benchCount = 0 }: { requests
                       <h4 className="font-black text-slate-950 text-lg leading-tight">{stageDetails.label}</h4>
                     </div>
                     <div className={cn("px-2.5 py-1 rounded-full border text-xs font-bold", stageDetails.key === "ACTIVE" ? "bg-emerald-50 border-emerald-200 text-emerald-700" : stageDetails.key === "RAMP_DOWN" ? "bg-indigo-50 border-indigo-200 text-indigo-700" : "bg-slate-50 border-slate-200 text-slate-700")}>
-                      {stageDetails.key === "ACTIVE" ? "Confirmed — Live" : stageDetails.key === "RAMP_DOWN" ? "Confirmed — Post-Delivery" : `${stageDetails.winProb}% Win Prob.`}
+                      {stageDetails.key === "ACTIVE" ? "Confirmed - Live" : stageDetails.key === "RAMP_DOWN" ? "Confirmed - Post-Delivery" : `${stageDetails.winProb}% Win Prob.`}
                     </div>
                   </div>
                   <p className="text-xs text-slate-500 leading-relaxed font-medium">{stageDetails.desc}</p>
@@ -339,7 +353,7 @@ export function PipelineAnalyticsClient({ requests, benchCount = 0 }: { requests
         </SectionCard>
       </div>
 
-      {/* 5 — Funnel + Waterfall */}
+      {/* 5 - Funnel + Waterfall */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         <SectionCard title="Pipeline Funnel" description="Deals and resource demand by stage" className="lg:col-span-2" action={<Activity className="h-4 w-4 text-slate-400" />}>
           {funnelData.length > 0 ? (

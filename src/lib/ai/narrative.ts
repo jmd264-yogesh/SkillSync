@@ -32,7 +32,7 @@ Write a 4 to 6 sentence early-warning narrative.`;
       }),
       new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), AI_TIMEOUT_MS)),
     ]);
-    return response.response.text();
+    return response.response.text().replace(/[—–]/g, "-");
   } catch {
     return fallbackNarrative(outlook);
   }
@@ -45,22 +45,16 @@ function fallbackNarrative(o: PipelineOutlook): string {
   return `First projected shortfall: ${o.firstShortfallMonth}. ${o.attritionCount} departures will reduce supply. Recommend reviewing ramp-down resources for redeployment and initiating hiring for critical roles now.`;
 }
 
-// ─── Resource Forecast narrative (revenue-aware) ─────────────
+// ─── Resource Forecast narrative (resource-focused) ─────────────
 
 const FORECAST_SYSTEM = `You are a workforce-planning strategist advising a professional-services resource manager.
-Given a revenue-aware resource forecast (demand vs supply by role, projected revenue, margin, revenue-at-risk, bench, attrition),
+Given a resource forecast (demand vs supply by role, shortfall, bench, attrition),
 write a crisp executive read in 3 to 4 sentences:
 - lead with the headline: are we covered, or where does the first gap open (role + month)?
-- name the money impact (projected revenue and/or revenue at risk) in plain terms
+- name which roles are short and by how many people
 - give ONE clear action (hire by date, redeploy bench, or defer unsigned work)
-Use the exact figures provided. Never invent or alter numbers. No jargon. British English, currency in GBP.
+Use the exact figures provided. Never invent or alter numbers. Focus on people and capacity, not revenue. No jargon. British English.
 Do not use em-dashes or en-dashes. Use commas, colons, or separate sentences instead.`;
-
-function money(n: number): string {
-  if (Math.abs(n) >= 1_000_000) return `£${(n / 1_000_000).toFixed(1)}M`;
-  if (Math.abs(n) >= 1_000) return `£${Math.round(n / 1_000)}k`;
-  return `£${Math.round(n)}`;
-}
 
 export async function resourceForecastNarrative(
   f: ResourceForecast,
@@ -76,8 +70,6 @@ export async function resourceForecastNarrative(
 Horizon: ${f.horizonMonths} months
 Total shortfall: ${f.totalShortfallFTE} FTE across ${f.totalHireCount} hire(s)
 First shortfall month: ${f.firstShortfallMonth ?? "none"}${f.hireByDate ? ` (hire-by ${f.hireByDate})` : ""}
-Projected revenue (annual): ${money(f.projectedAnnualRevenue)} at ${f.projectedMarginPct}% margin
-Revenue at risk (annual): ${money(f.revenueAtRiskAnnual)}
 Bench available: ${f.benchFTE} FTE · Attrition in horizon: ${f.attritionCount}
 Role gaps: ${topGaps || "none"}
 Data coverage: ${f.dataCoverage}%
@@ -93,7 +85,7 @@ Write the 3 to 4 sentence executive read.`;
       }),
       new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), AI_TIMEOUT_MS)),
     ]);
-    return response.response.text();
+    return response.response.text().replace(/[—–]/g, "-");
   } catch {
     return fallbackForecastNarrative(f);
   }
@@ -101,10 +93,10 @@ Write the 3 to 4 sentence executive read.`;
 
 function fallbackForecastNarrative(f: ResourceForecast): string {
   if (f.totalShortfallFTE <= 0) {
-    return `Supply covers projected demand across the ${f.horizonMonths}-month horizon, with ${money(f.projectedAnnualRevenue)} projected annual revenue at ${f.projectedMarginPct}% margin. ${f.benchFTE > 0 ? `You have ${f.benchFTE} FTE on bench, deploy it against incoming pipeline to avoid cost leakage.` : "Capacity is well matched to demand."} Monitor as new SOW-signed deals arrive.`;
+    return `Supply covers projected demand across the ${f.horizonMonths}-month horizon. ${f.benchFTE > 0 ? `You have ${f.benchFTE} FTE on bench, deploy it against incoming pipeline to keep utilisation high.` : "Capacity is well matched to demand."} Monitor as new SOW-signed deals arrive.`;
   }
   const lead = f.firstShortfallMonth
     ? `A ${f.totalShortfallFTE} FTE gap opens around ${f.firstShortfallMonth}, requiring roughly ${f.totalHireCount} hire(s).`
     : `Capacity is tight, with a ${f.totalShortfallFTE} FTE gap across the horizon.`;
-  return `${lead} ${money(f.revenueAtRiskAnnual)} of annual revenue is at risk from demand you can't currently staff. ${f.hireByDate ? `Start hiring by ${f.hireByDate} (8-week lead time)` : "Rebalance from bench or ramp-down projects"}${f.benchFTE > 0 ? `, and redeploy the ${f.benchFTE} FTE on bench first.` : "."}`;
+  return `${lead} ${f.attritionCount > 0 ? `${f.attritionCount} departure(s) in the horizon add to the pressure. ` : ""}${f.hireByDate ? `Start hiring by ${f.hireByDate} (8-week lead time)` : "Rebalance from bench or ramp-down projects"}${f.benchFTE > 0 ? `, and redeploy the ${f.benchFTE} FTE on bench first.` : "."}`;
 }

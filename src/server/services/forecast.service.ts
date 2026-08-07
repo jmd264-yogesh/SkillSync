@@ -8,6 +8,7 @@ import {
   HIRING_LEAD_TIME_WEEKS,
 } from "@/lib/constants";
 import { normalizeResourceRequest } from "@/lib/role-mapping";
+import { getEmployeeExtensionLikelihoodMap } from "@/server/services/extension-forecast.service";
 import type { ProjectCategory } from "@prisma/client";
 
 export interface RoleDemand {
@@ -451,8 +452,15 @@ export async function getResourceForecast(params: {
   }
 
   // ── Supply: employees → per-month free FTE by role ──
+  // Extension Radar signal: people on engagements likely to extend will NOT roll off
+  // when their allocation end-date says, so we hold them "allocated" through the horizon.
+  const extensionMap = await getEmployeeExtensionLikelihoodMap().catch(
+    () => new Map<string, { band: string; score: number; clientName: string }>(),
+  );
+
   const employees = await db.employee.findMany({
     select: {
+      id: true,
       weeklyCapacity: true,
       jobName: true,
       dateOfResignation: true,
@@ -480,9 +488,21 @@ export async function getResourceForecast(params: {
     const resign = emp.dateOfResignation;
     if (resign && resign >= now && resign <= horizonEnd) attritionCount++;
 
-    const totalAllocPct = emp.allocations.reduce((s, a) => s + a.allocation, 0);
-    if (totalAllocPct > 100) overAllocCount++;
-    if (emp.allocations.length === 0 && (!resign || resign > now)) benchFTE += baseFTE;
+    // Extension Radar: score >= 65 = LIKELY/VERY_LIKELY to extend, so this person
+    // is unlikely to actually free up at their allocation end-date.
+    const ext = extensionMap.get(emp.id);
+    const extensionLikely = ext ? ext.score >= 65 : false;
+
+    // Over-allocation and bench are "as of now": only allocations overlapping today
+    // count, so non-overlapping past/future allocations do not inflate the total.
+    const activeNow = emp.allocations.filter((a) => {
+      const aStart = a.startDate ?? new Date(0);
+      const aEnd = a.endDate ?? horizonEnd;
+      return aStart <= now && aEnd >= now;
+    });
+    const nowAllocPct = activeNow.reduce((s, a) => s + a.allocation, 0);
+    if (nowAllocPct > 100) overAllocCount++;
+    if (activeNow.length === 0 && (!resign || resign > now)) benchFTE += baseFTE;
 
     for (const m of months) {
       // Gone by this month?
@@ -493,7 +513,10 @@ export async function getResourceForecast(params: {
       let allocatedFraction = 0;
       for (const a of emp.allocations) {
         const aStart = a.startDate ?? new Date(0);
-        const aEnd = a.endDate ?? horizonEnd;
+        // Hold likely-to-extend allocations open through the horizon: they won't roll off on time.
+        const aEnd = (extensionLikely && a.endDate && a.endDate <= horizonEnd)
+          ? horizonEnd
+          : (a.endDate ?? horizonEnd);
         if (overlapDays(aStart, aEnd, m.start, m.end) > 0) {
           allocatedFraction += a.allocation / 100;
         }

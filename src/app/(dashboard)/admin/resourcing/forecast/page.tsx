@@ -1,16 +1,18 @@
 import { Suspense } from "react";
 import { getResourceForecastAction, narrateResourceForecastAction } from "@/server/actions/forecast";
+import { getExtensionSummaryData } from "@/server/actions/extension-forecast";
 import { PageHeader } from "@/components/shared/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ForecastClient } from "./forecast-client";
 
 async function ForecastContent() {
-  const params = { horizonMonths: 6, scenario: "weighted" as const, targetPeriod: "annual" as const };
-  const [initial, initialNarrative] = await Promise.all([
+  const params = { horizonMonths: 6, scenario: "weighted" as const };
+  const [initial, initialNarrative, extension] = await Promise.all([
     getResourceForecastAction(params),
     narrateResourceForecastAction(params).catch(() => ""),
+    getExtensionSummaryData().catch(() => null),
   ]);
-  return <ForecastClient initial={initial} initialNarrative={initialNarrative} />;
+  return <ForecastClient initial={initial} initialNarrative={initialNarrative} extension={extension} />;
 }
 
 export default function ForecastPage() {

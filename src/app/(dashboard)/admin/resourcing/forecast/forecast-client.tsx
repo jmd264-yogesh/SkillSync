@@ -3,29 +3,20 @@
 import { useState, useTransition } from "react";
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, Legend,
-  ResponsiveContainer, CartesianGrid,
+  ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from "recharts";
 import {
-  Users, TrendingDown, Banknote, AlertTriangle, Percent, CalendarClock, Target,
+  Users, TrendingDown, CalendarClock, Radar,
 } from "lucide-react";
 import { getResourceForecastAction, narrateResourceForecastAction } from "@/server/actions/forecast";
 import { DecisionCard } from "@/components/shared/decision-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
+import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type {
-  ResourceForecast, ForecastScenario,
+  ResourceForecast, ForecastScenario, MonthlyForecastPoint,
 } from "@/server/services/forecast.service";
-
-const gbp = new Intl.NumberFormat("en-GB", {
-  style: "currency", currency: "GBP", maximumFractionDigits: 0,
-});
-function money(n: number): string {
-  if (Math.abs(n) >= 1_000_000) return `£${(n / 1_000_000).toFixed(1)}M`;
-  if (Math.abs(n) >= 1_000) return `£${Math.round(n / 1_000)}k`;
-  return gbp.format(n);
-}
+import type { ExtensionSummary } from "@/server/services/extension-forecast.service";
 
 const SCENARIOS: { value: ForecastScenario; label: string; hint: string }[] = [
   { value: "confirmed", label: "Confirmed", hint: "SOW-signed only" },
@@ -33,6 +24,15 @@ const SCENARIOS: { value: ForecastScenario; label: string; hint: string }[] = [
   { value: "all", label: "All-in", hint: "signed + full unsigned pipeline" },
 ];
 const HORIZONS = [3, 6, 12];
+
+const ROLE_COLUMNS: { label: string; tip: string }[] = [
+  { label: "Role", tip: "Canonical role, parsed from each pipeline request's resource request and matched against employee job titles." },
+  { label: "Peak demand", tip: "The highest FTE demand for this role in any single month across the horizon - the tightest point, not an average." },
+  { label: "Avg supply", tip: "Average free capacity (FTE) for this role per month, after subtracting active allocations, planned leave, attrition, and holding people whose engagements are likely to extend." },
+  { label: "Shortfall", tip: "Peak demand minus supply for this role: how many FTE you are short at the tightest month. Blank means supply covers demand." },
+  { label: "Hires", tip: "People to hire to close the peak shortfall, rounded up to whole heads." },
+  { label: "Hire by", tip: "Start recruiting by this month to have the hire productive before the gap opens, allowing an 8-week hiring lead time." },
+];
 
 function KpiTile({
   label, value, sub, icon: Icon, valueClass,
@@ -79,25 +79,16 @@ function Segmented<T extends string | number>({
   );
 }
 
-export function ForecastClient({ initial, initialNarrative }: { initial: ResourceForecast; initialNarrative: string }) {
+export function ForecastClient({ initial, initialNarrative, extension }: { initial: ResourceForecast; initialNarrative: string; extension: ExtensionSummary | null }) {
   const [data, setData] = useState<ResourceForecast>(initial);
   const [narrative, setNarrative] = useState<string>(initialNarrative);
   const [scenario, setScenario] = useState<ForecastScenario>(initial.scenario);
   const [horizon, setHorizon] = useState<number>(initial.horizonMonths);
-  const [target, setTarget] = useState<string>("");
-  const [period, setPeriod] = useState<"monthly" | "annual">("annual");
   const [pending, startTransition] = useTransition();
   const [narrating, startNarrate] = useTransition();
 
-  function run(override: Partial<{ scenario: ForecastScenario; horizonMonths: number; revenueTarget: number | undefined; targetPeriod: "monthly" | "annual" }> = {}) {
-    const targetNum = target.trim() ? Number(target.replace(/[^0-9.]/g, "")) : undefined;
-    const params = {
-      horizonMonths: horizon,
-      scenario,
-      revenueTarget: Number.isFinite(targetNum) ? targetNum : undefined,
-      targetPeriod: period,
-      ...override,
-    };
+  function run(override: Partial<{ scenario: ForecastScenario; horizonMonths: number }> = {}) {
+    const params = { horizonMonths: horizon, scenario, ...override };
     startTransition(async () => {
       const res = await getResourceForecastAction(params);
       setData(res);
@@ -117,13 +108,13 @@ export function ForecastClient({ initial, initialNarrative }: { initial: Resourc
     ? (data.firstShortfallMonth ? "NO" : "YES_WITH_CONDITIONS")
     : "YES";
 
-  const rt = data.revenueTarget;
+  const chartData = data.monthly;
 
   return (
     <div className="space-y-5">
       {/* ── Controls ── */}
       <Card className="border-0 shadow-sm">
-        <CardContent className="px-5 py-4 flex flex-wrap items-end gap-x-8 gap-y-4">
+        <CardContent className="px-5 py-4 flex flex-wrap items-start gap-x-8 gap-y-4">
           <div className="space-y-1.5">
             <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-widest">Pipeline scenario</p>
             <Segmented
@@ -147,69 +138,30 @@ export function ForecastClient({ initial, initialNarrative }: { initial: Resourc
             />
           </div>
 
-          <div className="space-y-1.5">
-            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-widest">Revenue target</p>
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm">£</span>
-                <Input
-                  value={target}
-                  onChange={(e) => setTarget(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") run(); }}
-                  placeholder="e.g. 5,000,000"
-                  inputMode="numeric"
-                  className="w-40 pl-6 h-9 text-sm"
-                />
-              </div>
-              <Segmented
-                options={["annual", "monthly"] as const}
-                value={period}
-                onChange={(v) => { setPeriod(v); if (target.trim()) run({ targetPeriod: v }); }}
-                render={(v) => v === "annual" ? "Annual" : "Monthly"}
-              />
-              <button
-                type="button"
-                onClick={() => run()}
-                className="h-9 px-4 rounded-lg bg-primary text-white text-xs font-semibold hover:opacity-90 transition-opacity"
-              >
-                Solve
-              </button>
-            </div>
-          </div>
-
           {pending && <span className="text-xs text-muted-foreground animate-pulse ml-auto">Recalculating…</span>}
         </CardContent>
       </Card>
 
+      {/* ── Results (with loading overlay) ── */}
+      <div className="relative">
+        {pending && (
+          <div className="absolute inset-0 z-20 flex items-start justify-center pt-24 rounded-xl bg-white/60 backdrop-blur-[1px]">
+            <div className="flex items-center gap-2 rounded-full bg-white shadow-md border border-slate-200 px-4 py-2">
+              <span className="h-4 w-4 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+              <span className="text-xs font-medium text-slate-600">Updating forecast…</span>
+            </div>
+          </div>
+        )}
+        <div className={cn("space-y-5 transition-opacity duration-200", pending ? "opacity-40 pointer-events-none" : "")}>
+
       {/* ── KPI strip ── */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <KpiTile
           icon={TrendingDown}
           label="Resource shortfall"
           value={`${data.totalShortfallFTE} FTE`}
           sub={`${data.totalHireCount} hire${data.totalHireCount !== 1 ? "s" : ""} to close`}
           valueClass={hasShortfall ? "text-red-700" : "text-green-700"}
-        />
-        <KpiTile
-          icon={Banknote}
-          label="Projected revenue"
-          value={money(data.projectedAnnualRevenue)}
-          sub="annualised, at target utilisation"
-          valueClass="text-slate-800"
-        />
-        <KpiTile
-          icon={AlertTriangle}
-          label="Revenue at risk"
-          value={money(data.revenueAtRiskAnnual)}
-          sub="unstaffable demand, annualised"
-          valueClass={data.revenueAtRiskAnnual > 0 ? "text-amber-700" : "text-slate-800"}
-        />
-        <KpiTile
-          icon={Percent}
-          label="Gross margin"
-          value={`${data.projectedMarginPct}%`}
-          sub={`cost ${money(data.projectedAnnualCost)}/yr`}
-          valueClass={data.projectedMarginPct >= 40 ? "text-green-700" : data.projectedMarginPct >= 20 ? "text-amber-700" : "text-red-700"}
         />
         <KpiTile
           icon={Users}
@@ -219,6 +171,47 @@ export function ForecastClient({ initial, initialNarrative }: { initial: Resourc
           valueClass={data.benchFTE > 0 ? "text-blue-700" : "text-slate-800"}
         />
       </div>
+
+      {/* ── Demand vs Supply chart ── */}
+      <Card className="border-0 shadow-sm">
+        <CardHeader className="px-5 py-3 border-b flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-sm font-semibold">Demand vs Supply over {horizon} months</CardTitle>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Bars = demand (confirmed + probable). Green line = supply. Blue line = net capacity (surplus above 0, shortfall below). Hover any month for the read-out.
+            </p>
+          </div>
+        </CardHeader>
+        <CardContent className="px-3 py-4">
+          {chartData.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-8 text-center">
+              No pipeline demand loaded. Run the ETL to ingest pipeline requests.
+            </p>
+          ) : (
+            <ResponsiveContainer width="100%" height={320}>
+              <ComposedChart data={chartData} margin={{ top: 8, right: 12, bottom: 4, left: -8 }}>
+                <defs>
+                  <linearGradient id="confGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#6366F1" stopOpacity={0.95} />
+                    <stop offset="100%" stopColor="#6366F1" stopOpacity={0.75} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" vertical={false} />
+                <XAxis dataKey="label" tick={{ fill: "#64748B", fontSize: 11 }} tickLine={false} axisLine={false} />
+                <YAxis yAxisId="fte" tick={{ fill: "#64748B", fontSize: 11 }} tickLine={false} axisLine={false}
+                  label={{ value: "FTE", angle: -90, position: "insideLeft", fill: "#94A3B8", fontSize: 11, dy: 20 }} />
+                <ReferenceLine yAxisId="fte" y={0} stroke="#cbd5e1" strokeWidth={1} />
+                <Tooltip content={<ForecastTooltip />} cursor={{ fill: "rgba(99,102,241,0.05)" }} />
+                <Legend wrapperStyle={{ fontSize: 11 }} iconType="circle" />
+                <Bar yAxisId="fte" dataKey="confirmedDemandFTE" name="Confirmed demand" stackId="d" fill="url(#confGrad)" radius={[0, 0, 0, 0]} maxBarSize={44} />
+                <Bar yAxisId="fte" dataKey="probableDemandFTE" name="Probable demand" stackId="d" fill="#C7D2FE" radius={[4, 4, 0, 0]} maxBarSize={44} />
+                <Line yAxisId="fte" type="monotone" dataKey="supplyFTE" name="Supply" stroke="#10B981" strokeWidth={2.5} dot={{ r: 3, fill: "#10B981" }} activeDot={{ r: 5 }} />
+                <Line yAxisId="fte" type="monotone" dataKey="gapFTE" name="Net capacity" stroke="#0EA5E9" strokeWidth={2} strokeDasharray="5 3" dot={{ r: 2.5, fill: "#0EA5E9" }} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
 
       {/* ── Decision ── */}
       <DecisionCard
@@ -239,103 +232,52 @@ export function ForecastClient({ initial, initialNarrative }: { initial: Resourc
         }
         evidence={[
           `${data.totalShortfallFTE} FTE shortfall · ${data.totalHireCount} hires to fully close`,
-          `Projected revenue ${money(data.projectedAnnualRevenue)}/yr at ${data.projectedMarginPct}% margin`,
-          `${money(data.revenueAtRiskAnnual)}/yr at risk from demand you can't staff`,
+          `${data.byRole.filter((r) => r.shortfallFTE > 0).length} role${data.byRole.filter((r) => r.shortfallFTE > 0).length !== 1 ? "s" : ""} short${data.firstShortfallMonth ? ` · first gap ${fmtMonth(data.firstShortfallMonth)}` : ""}`,
           `Scenario: ${SCENARIOS.find((s) => s.value === scenario)?.label} · ${data.benchFTE} FTE bench · ${data.attritionCount} attrition · Data coverage ${data.dataCoverage}%`,
         ]}
         aiWhy={narrating ? "Generating executive read…" : (narrative || undefined)}
         confidence={data.dataCoverage >= 80 ? "HIGH" : data.dataCoverage >= 50 ? "MEDIUM" : "LOW"}
       />
 
-      {/* ── Demand vs Supply + Revenue chart ── */}
+      {/* ── Extension Radar signal (feeds the supply projection) ── */}
       <Card className="border-0 shadow-sm">
-        <CardHeader className="px-5 py-3 border-b">
-          <CardTitle className="text-sm font-semibold">Demand vs Supply & Revenue over {horizon} months</CardTitle>
-        </CardHeader>
-        <CardContent className="px-3 py-4">
-          {data.monthly.length === 0 ? (
-            <p className="text-xs text-muted-foreground py-8 text-center">
-              No pipeline demand loaded. Run the ETL to ingest pipeline requests.
+        <CardHeader className="px-5 py-3 border-b flex flex-row items-start gap-2">
+          <Radar className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
+          <div>
+            <CardTitle className="text-sm font-semibold">Extension Radar signal</CardTitle>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Renewal likelihood of current engagements. People on likely-to-extend work are held in the supply above (they will not roll off on schedule); unlikely-to-extend work frees capacity.
             </p>
+          </div>
+        </CardHeader>
+        <CardContent className="px-5 py-4">
+          {!extension || extension.totalEntries === 0 ? (
+            <p className="text-xs text-muted-foreground">No extension radar data loaded.</p>
           ) : (
-            <ResponsiveContainer width="100%" height={300}>
-              <ComposedChart data={data.monthly} margin={{ top: 8, right: 12, bottom: 4, left: -8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" vertical={false} />
-                <XAxis dataKey="label" tick={{ fill: "#64748B", fontSize: 11 }} tickLine={false} axisLine={false} />
-                <YAxis yAxisId="fte" tick={{ fill: "#64748B", fontSize: 11 }} tickLine={false} axisLine={false}
-                  label={{ value: "FTE", angle: -90, position: "insideLeft", fill: "#94A3B8", fontSize: 11, dy: 20 }} />
-                <YAxis yAxisId="rev" orientation="right" tick={{ fill: "#64748B", fontSize: 11 }} tickLine={false} axisLine={false}
-                  tickFormatter={(v) => money(v)} />
-                <Tooltip
-                  formatter={(value, name) => {
-                    const num = typeof value === "number" ? value : Number(value);
-                    return String(name).includes("Revenue") ? money(num) : `${num} FTE`;
-                  }}
-                  contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }}
-                />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar yAxisId="fte" dataKey="confirmedDemandFTE" name="Confirmed demand" stackId="d" fill="#6366F1" radius={[0, 0, 0, 0]} />
-                <Bar yAxisId="fte" dataKey="probableDemandFTE" name="Probable demand" stackId="d" fill="#C7D2FE" radius={[3, 3, 0, 0]} />
-                <Bar yAxisId="fte" dataKey="supplyFTE" name="Supply (FTE)" fill="#34D399" radius={[3, 3, 0, 0]} />
-                <Line yAxisId="rev" type="monotone" dataKey="projectedRevenue" name="Projected Revenue" stroke="#F59E0B" strokeWidth={2} dot={false} />
-                <Line yAxisId="rev" type="monotone" dataKey="revenueAtRisk" name="Revenue at Risk" stroke="#EF4444" strokeWidth={2} strokeDasharray="4 3" dot={false} />
-              </ComposedChart>
-            </ResponsiveContainer>
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                {[
+                  { k: "VERY_LIKELY", label: "Definitely extend", cls: "text-emerald-700" },
+                  { k: "LIKELY", label: "Likely extend", cls: "text-blue-700" },
+                  { k: "UNCERTAIN", label: "Uncertain", cls: "text-amber-700" },
+                  { k: "UNLIKELY", label: "Won't extend", cls: "text-red-700" },
+                  { k: "UNKNOWN", label: "Unknown", cls: "text-slate-500" },
+                ].map((b) => (
+                  <div key={b.k} className="rounded-lg border border-slate-100 bg-slate-50/50 px-3 py-2.5">
+                    <p className={cn("text-xl font-bold leading-none", b.cls)}>
+                      {extension.byBand[b.k as keyof typeof extension.byBand] ?? 0}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-1">{b.label}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-3">
+                {extension.byBand.VERY_LIKELY + extension.byBand.LIKELY} of {extension.totalEntries} engagement{extension.totalEntries !== 1 ? "s" : ""} are likely to extend and are held in the supply projection above.
+              </p>
+            </>
           )}
         </CardContent>
       </Card>
-
-      {/* ── Revenue target solver ── */}
-      {rt && (
-        <Card className="border shadow-sm overflow-hidden">
-          <div className={cn(
-            "px-5 py-3 border-b flex items-center justify-between gap-3",
-            rt.achievable ? "bg-green-50 border-green-200" : rt.coverableFromBench ? "bg-amber-50 border-amber-200" : "bg-red-50 border-red-200",
-          )}>
-            <div className="flex items-center gap-2">
-              <Target className="w-4 h-4 text-slate-500" />
-              <p className="text-sm font-semibold text-slate-800">
-                To hit {money(rt.target)} {rt.period} revenue
-              </p>
-            </div>
-            <Badge variant="outline" className={cn(
-              "text-xs font-medium",
-              rt.achievable ? "bg-green-100 text-green-800 border-green-300"
-                : rt.coverableFromBench ? "bg-amber-100 text-amber-800 border-amber-300"
-                : "bg-red-100 text-red-800 border-red-300",
-            )}>
-              {rt.achievable ? "Achievable now" : rt.coverableFromBench ? "Redeploy bench" : "Hiring required"}
-            </Badge>
-          </div>
-          <CardContent className="px-5 py-4 space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <SolveStat label="Required billable" value={`${rt.requiredBillableFTE} FTE`} />
-              <SolveStat label="Currently billable" value={`${rt.currentBillableFTE} FTE`} />
-              <SolveStat
-                label="Additional needed"
-                value={`${rt.additionalFTENeeded} FTE`}
-                valueClass={rt.additionalFTENeeded > 0 ? "text-red-700" : "text-green-700"}
-              />
-              <SolveStat label="Blended day-rate basis" value={money(rt.avgBillRateMonthly / 21)} sub="per billable day" />
-            </div>
-            {rt.hiresByRole.length > 0 && (
-              <div className="space-y-1.5">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Suggested hires by role</p>
-                <div className="flex flex-wrap gap-2">
-                  {rt.hiresByRole.map((h) => (
-                    <Badge key={h.role} variant="outline" className="text-xs bg-slate-50 text-slate-700 border-slate-200">
-                      {h.hireCount}× {h.role}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            )}
-            <p className="text-[11px] text-muted-foreground">
-              Assumes 80% target utilisation. Required FTE = monthly target ÷ (blended monthly bill-rate × utilisation).
-            </p>
-          </CardContent>
-        </Card>
-      )}
 
       {/* ── Shortfall by role ── */}
       <Card className="border-0 shadow-sm">
@@ -344,19 +286,27 @@ export function ForecastClient({ initial, initialNarrative }: { initial: Resourc
           <CardTitle className="text-sm font-semibold">Shortfall by Role & Hire-by Date</CardTitle>
         </CardHeader>
         <div className="overflow-x-auto">
+          <TooltipProvider delay={100}>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-slate-50/60">
-                {["Role", "Peak demand", "Avg supply", "Shortfall", "Hires", "Hire by", "Rev. at risk /mo"].map((h) => (
-                  <th key={h} className="px-4 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">
-                    {h}
+                {ROLE_COLUMNS.map((c) => (
+                  <th key={c.label} className="px-4 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">
+                    <UITooltip>
+                      <TooltipTrigger className="cursor-help underline decoration-dotted decoration-slate-300 underline-offset-2">
+                        {c.label}
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-[250px] text-xs font-normal normal-case tracking-normal leading-snug">
+                        {c.tip}
+                      </TooltipContent>
+                    </UITooltip>
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {data.byRole.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-6 text-center text-xs text-muted-foreground">No role demand in this scenario.</td></tr>
+                <tr><td colSpan={6} className="px-4 py-6 text-center text-xs text-muted-foreground">No role demand in this scenario.</td></tr>
               ) : data.byRole.map((r) => (
                 <tr key={r.role} className="border-b last:border-0 hover:bg-slate-50/40">
                   <td className="px-4 py-2.5 font-medium text-slate-800">{r.role}</td>
@@ -369,23 +319,64 @@ export function ForecastClient({ initial, initialNarrative }: { initial: Resourc
                   <td className={cn("px-4 py-2.5", r.hireByDate ? "text-amber-700 font-medium" : "text-slate-400")}>
                     {r.hireByDate ? fmtMonth(r.hireByDate) : "-"}
                   </td>
-                  <td className="px-4 py-2.5 text-slate-600">{r.revenueAtRiskMonthly > 0 ? money(r.revenueAtRiskMonthly) : "-"}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </TooltipProvider>
         </div>
       </Card>
+        </div>
+      </div>
     </div>
   );
 }
 
-function SolveStat({ label, value, sub, valueClass }: { label: string; value: string; sub?: string; valueClass?: string }) {
+function TooltipRow({ color, label, value, valueClass }: { color: string; label: string; value: string; valueClass?: string }) {
   return (
-    <div>
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className={cn("text-lg font-bold", valueClass ?? "text-slate-800")}>{value}</p>
-      {sub && <p className="text-[10px] text-muted-foreground/70">{sub}</p>}
+    <div className="flex items-center justify-between gap-4">
+      <span className="flex items-center gap-1.5 text-slate-500">
+        <span className="h-2 w-2 rounded-full shrink-0" style={{ background: color }} />
+        {label}
+      </span>
+      <span className={cn("font-semibold", valueClass ?? "text-slate-800")}>{value}</span>
+    </div>
+  );
+}
+
+interface ForecastTooltipProps {
+  active?: boolean;
+  payload?: Array<{ payload: MonthlyForecastPoint }>;
+}
+
+function ForecastTooltip({ active, payload }: ForecastTooltipProps) {
+  if (!active || !payload || payload.length === 0) return null;
+  const p = payload[0]!.payload;
+  const shortfall = Math.max(0, Math.round((p.demandFTE - p.supplyFTE) * 10) / 10);
+  const surplus = Math.max(0, Math.round((p.supplyFTE - p.demandFTE) * 10) / 10);
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white shadow-lg px-3.5 py-3 text-xs min-w-[236px]">
+      <p className="font-semibold text-slate-800 mb-2 text-[13px]">{p.label}</p>
+      <div className="space-y-1.5">
+        <TooltipRow color="#6366F1" label="Total demand" value={`${p.demandFTE} FTE`} />
+        <div className="pl-3.5 space-y-1 text-[11px] text-slate-400">
+          <div className="flex justify-between"><span>Confirmed (signed)</span><span className="font-medium text-slate-600">{p.confirmedDemandFTE} FTE</span></div>
+          <div className="flex justify-between"><span>Probable (pipeline)</span><span className="font-medium text-slate-600">{p.probableDemandFTE} FTE</span></div>
+        </div>
+        <TooltipRow color="#10B981" label="Supply available" value={`${p.supplyFTE} FTE`} />
+        <TooltipRow
+          color="#0EA5E9"
+          label="Net capacity"
+          value={`${p.gapFTE > 0 ? "+" : ""}${p.gapFTE} FTE`}
+          valueClass={p.gapFTE < 0 ? "text-red-600" : "text-emerald-600"}
+        />
+      </div>
+      <div className={cn("mt-2.5 pt-2 border-t text-[11px] font-semibold leading-snug",
+        shortfall > 0 ? "text-red-600 border-red-100" : "text-emerald-600 border-emerald-100")}>
+        {shortfall > 0
+          ? `Short ${shortfall} FTE this month. Hire or redeploy to cover it.`
+          : `${surplus} FTE spare capacity, room to absorb more pipeline.`}
+      </div>
     </div>
   );
 }

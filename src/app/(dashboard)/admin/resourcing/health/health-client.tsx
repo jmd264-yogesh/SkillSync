@@ -52,7 +52,7 @@ function Pagination({
   return (
     <div className="flex items-center justify-between pt-3 border-t mt-3">
       <p className="text-xs text-muted-foreground">
-        {start}–{end} of {total}
+        {start}-{end} of {total}
       </p>
       <div className="flex gap-1">
         <Button

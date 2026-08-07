@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useTransition } from "react";
-import { Plus, X, RefreshCw, Save, Trash2, Banknote, TrendingDown, Percent, Users, Sparkles } from "lucide-react";
+import { Plus, X, RefreshCw, Save, Trash2, TrendingDown, Users, Sparkles } from "lucide-react";
 import { compareScenariosAction, type ScenarioForecast } from "@/server/actions/forecast";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -32,15 +32,8 @@ interface Def {
   horizonMonths: number;
 }
 
-const gbp = new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: 0 });
-function money(n: number): string {
-  if (Math.abs(n) >= 1_000_000) return `£${(n / 1_000_000).toFixed(1)}M`;
-  if (Math.abs(n) >= 1_000) return `£${Math.round(n / 1_000)}k`;
-  return gbp.format(n);
-}
-function signedMoney(n: number): string {
-  const s = money(Math.abs(n));
-  return n > 0 ? `+${s}` : n < 0 ? `-${s}` : s;
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
 }
 function fmtMonth(key: string | null): string {
   if (!key) return "none";
@@ -135,14 +128,21 @@ export function ScenarioPlannerClient({ initial }: { initial: ScenarioForecast[]
   const baseline = results[0];
   const byId = new Map(results.map((r) => [r.id, r]));
 
-  // Headline takeaway: best-revenue scenario vs baseline.
+  // Headline takeaway: scenario that differs most from baseline on hiring need.
   const takeaway = (() => {
     if (results.length < 2 || !baseline) return null;
-    const best = results.reduce((a, b) => (b.forecast.projectedAnnualRevenue > a.forecast.projectedAnnualRevenue ? b : a), results[0]!);
-    if (best.id === baseline.id) return null;
-    const revDelta = best.forecast.projectedAnnualRevenue - baseline.forecast.projectedAnnualRevenue;
-    const hireDelta = best.forecast.totalHireCount - baseline.forecast.totalHireCount;
-    return { best, revDelta, hireDelta };
+    const others = results.filter((r) => r.id !== baseline.id);
+    if (others.length === 0) return null;
+    const pick = others.reduce(
+      (a, b) =>
+        Math.abs(b.forecast.totalHireCount - baseline.forecast.totalHireCount) >
+        Math.abs(a.forecast.totalHireCount - baseline.forecast.totalHireCount)
+          ? b : a,
+      others[0]!,
+    );
+    const hireDelta = pick.forecast.totalHireCount - baseline.forecast.totalHireCount;
+    const shortDelta = round1(pick.forecast.totalShortfallFTE - baseline.forecast.totalShortfallFTE);
+    return { pick, hireDelta, shortDelta };
   })();
 
   return (
@@ -215,15 +215,14 @@ export function ScenarioPlannerClient({ initial }: { initial: ScenarioForecast[]
             <Sparkles className="h-4 w-4 text-white" />
           </div>
           <p className="text-sm text-slate-700 leading-relaxed">
-            <span className="font-bold text-slate-900">{takeaway.best.name}</span>{" "}
-            {takeaway.revDelta >= 0 ? "adds" : "gives"}{" "}
-            <span className={cn("font-bold", takeaway.revDelta >= 0 ? "text-emerald-700" : "text-red-700")}>
-              {signedMoney(takeaway.revDelta)}/yr revenue
-            </span>{" "}
-            versus {baseline?.name},{" "}
-            {takeaway.hireDelta > 0
-              ? <>but needs <span className="font-bold text-amber-700">{takeaway.hireDelta} more hire{takeaway.hireDelta !== 1 ? "s" : ""}</span>{takeaway.best.forecast.hireByDate ? <> by {fmtMonth(takeaway.best.forecast.hireByDate)}</> : null}.</>
-              : <>with <span className="font-bold text-emerald-700">no extra hiring</span>.</>}
+            <span className="font-bold text-slate-900">{takeaway.pick.name}</span>{" "}
+            {takeaway.hireDelta > 0 ? (
+              <>needs <span className="font-bold text-amber-700">{takeaway.hireDelta} more hire{takeaway.hireDelta !== 1 ? "s" : ""}</span> than {baseline?.name}{takeaway.pick.forecast.hireByDate ? <>, first gap by {fmtMonth(takeaway.pick.forecast.hireByDate)}</> : null}.</>
+            ) : takeaway.hireDelta < 0 ? (
+              <>needs <span className="font-bold text-emerald-700">{Math.abs(takeaway.hireDelta)} fewer hire{Math.abs(takeaway.hireDelta) !== 1 ? "s" : ""}</span> than {baseline?.name}.</>
+            ) : (
+              <>matches {baseline?.name} on hiring{takeaway.shortDelta !== 0 ? <>, but shifts the shortfall by {takeaway.shortDelta} FTE</> : null}.</>
+            )}
           </p>
         </div>
       )}
@@ -235,8 +234,8 @@ export function ScenarioPlannerClient({ initial }: { initial: ScenarioForecast[]
           const f = res?.forecast;
           const base = baseline?.forecast;
           const isBaseline = baseline?.id === def.id;
-          const revDelta = f && base ? f.projectedAnnualRevenue - base.projectedAnnualRevenue : 0;
           const hireDelta = f && base ? f.totalHireCount - base.totalHireCount : 0;
+          const shortDelta = f && base ? round1(f.totalShortfallFTE - base.totalShortfallFTE) : 0;
 
           return (
             <Card key={def.id} className={cn("border shadow-sm overflow-hidden", isBaseline ? "border-slate-200" : "border-indigo-100")}>
@@ -322,25 +321,24 @@ export function ScenarioPlannerClient({ initial }: { initial: ScenarioForecast[]
                   <div className="pt-2 border-t border-slate-100 space-y-3">
                     <div>
                       <div className="flex items-baseline justify-between">
-                        <span className="text-[11px] text-slate-400 flex items-center gap-1"><Banknote className="h-3.5 w-3.5" />Projected revenue /yr</span>
-                        {!isBaseline && revDelta !== 0 && (
-                          <span className={cn("text-[11px] font-bold", revDelta > 0 ? "text-emerald-600" : "text-red-600")}>{signedMoney(revDelta)}</span>
+                        <span className="text-[11px] text-slate-400 flex items-center gap-1"><Users className="h-3.5 w-3.5" />Hires needed</span>
+                        {!isBaseline && hireDelta !== 0 && (
+                          <span className={cn("text-[11px] font-bold", hireDelta > 0 ? "text-amber-600" : "text-emerald-600")}>{hireDelta > 0 ? `+${hireDelta}` : `${hireDelta}`}</span>
                         )}
                       </div>
-                      <p className="text-2xl font-bold text-slate-900 leading-tight">{money(f.projectedAnnualRevenue)}</p>
+                      <p className="text-2xl font-bold text-slate-900 leading-tight">{f.totalHireCount}</p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-y-2.5 gap-x-3 text-xs">
-                      <Metric icon={Percent} label="Margin" value={`${f.projectedMarginPct}%`} valueClass={f.projectedMarginPct >= 40 ? "text-emerald-700" : f.projectedMarginPct >= 20 ? "text-amber-700" : "text-red-700"} />
-                      <Metric icon={TrendingDown} label="Shortfall" value={`${f.totalShortfallFTE} FTE`} valueClass={f.totalShortfallFTE > 0 ? "text-red-700" : "text-emerald-700"} />
                       <Metric
-                        icon={Users}
-                        label="Hires needed"
-                        value={`${f.totalHireCount}`}
-                        delta={!isBaseline && hireDelta !== 0 ? (hireDelta > 0 ? `+${hireDelta}` : `${hireDelta}`) : undefined}
-                        deltaClass={hireDelta > 0 ? "text-amber-600" : "text-emerald-600"}
+                        icon={TrendingDown}
+                        label="Shortfall"
+                        value={`${f.totalShortfallFTE} FTE`}
+                        valueClass={f.totalShortfallFTE > 0 ? "text-red-700" : "text-emerald-700"}
+                        delta={!isBaseline && shortDelta !== 0 ? (shortDelta > 0 ? `+${shortDelta}` : `${shortDelta}`) : undefined}
+                        deltaClass={shortDelta > 0 ? "text-red-600" : "text-emerald-600"}
                       />
-                      <Metric icon={Banknote} label="At risk /yr" value={money(f.revenueAtRiskAnnual)} valueClass={f.revenueAtRiskAnnual > 0 ? "text-amber-700" : "text-slate-700"} />
+                      <Metric icon={Users} label="Bench" value={`${f.benchFTE} FTE`} valueClass="text-blue-700" />
                     </div>
 
                     <div className="flex items-center justify-between text-[11px] pt-2 border-t border-slate-50">
@@ -350,8 +348,8 @@ export function ScenarioPlannerClient({ initial }: { initial: ScenarioForecast[]
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-slate-400">Bench available</span>
-                      <span className="font-semibold text-blue-700">{f.benchFTE} FTE</span>
+                      <span className="text-slate-400">Attrition in horizon</span>
+                      <span className="font-semibold text-slate-700">{f.attritionCount}</span>
                     </div>
                   </div>
                 ) : (

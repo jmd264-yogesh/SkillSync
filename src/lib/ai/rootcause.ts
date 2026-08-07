@@ -34,7 +34,7 @@ Explain root cause and one intervention in 3 sentences.`;
       }),
       new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), AI_TIMEOUT_MS)),
     ]);
-    return response.response.text();
+    return response.response.text().replace(/[—–]/g, "-");
   } catch {
     return fallbackRootCause(health);
   }

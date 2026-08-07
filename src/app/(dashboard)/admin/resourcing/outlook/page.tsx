@@ -146,7 +146,7 @@ async function OutlookContent() {
           hasConfirmedShortfall
             ? `Initiate hiring immediately - ${outlook.confirmedCount} SOW-signed requests already exceed supply`
             : hasProbableShortfall
-            ? "Monitor unsigned pipeline - initiate hiring if deals close (6–8 week lead time)"
+            ? "Monitor unsigned pipeline - initiate hiring if deals close (6-8 week lead time)"
             : "Monitor pipeline and revisit when new SOW-signed requests arrive"
         }
         evidence={[

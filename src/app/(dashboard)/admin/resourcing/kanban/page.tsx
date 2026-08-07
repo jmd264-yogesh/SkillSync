@@ -93,7 +93,7 @@ export default function KanbanPage() {
   // Filter for decision states: All, Pending, Approved, Swapped, Negotiating
   const [decisionFilter, setDecisionFilter] = useState<"All" | "Pending" | "Approved" | "Swapped" | "Negotiating">("All");
 
-  // Empty by default — filled exclusively from DB on mount
+  // Empty by default - filled exclusively from DB on mount
   const [projectsList, setProjectsList] = useState<Project[]>([]);
 
   // Cache: resource names per project -> role (from DB)
@@ -112,7 +112,7 @@ export default function KanbanPage() {
           getKanbanProjects()
         ]);
 
-        // Always replace with DB data (even if empty — no mock fallback)
+        // Always replace with DB data (even if empty - no mock fallback)
         setProjectsList(fetchedProjects as Project[]);
 
         const decisions: Record<string, Record<string, "Approved" | "Rejected">> = {};
@@ -462,7 +462,7 @@ export default function KanbanPage() {
               className={`flex-1 min-w-[280px] max-w-[320px] rounded-xl border ${columnBorder} ${columnBg} p-4 flex flex-col gap-3 shadow-sm`}
             >
               {/* Column Header */}
-              <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center justify-between gap-2 min-h-[24px]">
                 <h3 className="font-semibold text-slate-800 text-sm tracking-tight leading-snug">
                   {status}
                 </h3>

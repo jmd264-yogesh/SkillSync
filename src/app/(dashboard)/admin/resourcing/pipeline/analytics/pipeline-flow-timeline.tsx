@@ -20,6 +20,7 @@ import {
   Award, RefreshCw, ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { normalizeResourceRequest } from "@/lib/role-mapping";
 import type { PipelineRequestWithContext } from "@/server/services/pipeline.service";
 import { SectionCard } from "../../../analytics/analytics-client";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
@@ -51,6 +52,11 @@ function normalizeStage(raw: string | null): string {
   return raw.toUpperCase().replace(/\s+/g, "_");
 }
 
+/** FTE demand for a deal, parsed from its resource request (same parser the forecast uses). */
+function dealFte(r: { resourcesRequested: string | null }): number {
+  return r.resourcesRequested ? normalizeResourceRequest(r.resourcesRequested).count : 0;
+}
+
 /** Converts monthsUntilStart + likelyStart into a clear human label, e.g. "~9 days (Jul 5)" */
 function formatLeadTime(months: number | null, likelyStart: Date | null): string {
   const dateStr = likelyStart
@@ -80,7 +86,7 @@ export function PipelineFlowTimeline({ requests, benchCount }: PipelineFlowTimel
   const flowStats = useMemo(() => {
     return STAGE_FLOW_CONFIG.map((cfg) => {
       const deals = active.filter((r) => normalizeStage(r.dealStage) === cfg.key);
-      const fte = deals.reduce((s, r) => s + (r.resourceRecommended ?? 0), 0);
+      const fte = deals.reduce((s, r) => s + dealFte(r), 0);
 
       let winProb = 0.2;
       if (cfg.key === "SOW_PENDING") winProb = 0.4;
@@ -89,7 +95,7 @@ export function PipelineFlowTimeline({ requests, benchCount }: PipelineFlowTimel
       else if (cfg.key === "RAMP_DOWN") winProb = 1.0;
 
       const weightedFte = fte * winProb;
-      // Active Delivery and Ramp Down are already staffed — no hiring shortage applies
+      // Active Delivery and Ramp Down are already staffed - no hiring shortage applies
       const atRiskDeals = (cfg.key === "ACTIVE" || cfg.key === "RAMP_DOWN")
         ? []
         : deals.filter(r => r.hiringLeadTimeAlert);
@@ -114,7 +120,7 @@ export function PipelineFlowTimeline({ requests, benchCount }: PipelineFlowTimel
     return flowStats.find((s) => s.key === selectedStage);
   }, [flowStats, selectedStage]);
 
-  // Snowball Bridge filtered by selected stage — updates when a stage node is clicked
+  // Snowball Bridge filtered by selected stage - updates when a stage node is clicked
   const bridgeData = useMemo(() => {
     const stageDeals = active.filter(r => normalizeStage(r.dealStage) === selectedStage);
     const stageCfg = STAGE_FLOW_CONFIG.find(s => s.key === selectedStage);
@@ -124,7 +130,7 @@ export function PipelineFlowTimeline({ requests, benchCount }: PipelineFlowTimel
         : stageCfg?.key === "SOW_PENDING" ? 0.4
           : 0.2;
 
-    const grossFte = stageDeals.reduce((s, r) => s + (r.resourceRecommended ?? 0), 0);
+    const grossFte = stageDeals.reduce((s, r) => s + dealFte(r), 0);
     const haircutFte = grossFte * (1 - winProb);
     const expectedFte = grossFte * winProb;
 
@@ -148,10 +154,10 @@ export function PipelineFlowTimeline({ requests, benchCount }: PipelineFlowTimel
         description="Horizontal pipeline stages with branching demand metrics (Opportunity count vs. FTE demand)"
         action={<Activity className="h-4 w-4 text-slate-400" />}
         flush
-        className="relative overflow-hidden"
+        className="relative"
       >
         {/* Outer scroll container to prevent cut-off at screen edges */}
-        <div className="overflow-x-auto pb-4 pt-4 px-6 w-full scrollbar-thin">
+        <div className="overflow-x-auto pb-10 pt-10 px-6 w-full scrollbar-thin">
           <div className="min-w-[920px] relative h-[420px] p-0">
 
             {/* Central pipeline (pipe) */}
@@ -185,7 +191,7 @@ export function PipelineFlowTimeline({ requests, benchCount }: PipelineFlowTimel
                       whileHover={{ scale: 1.25 }}
                       onClick={() => setSelectedStage(stage.key)}
                       className={cn(
-                        "h-5 w-5 rounded-full border-2 bg-white flex items-center justify-center shadow-md relative z-20 transition-all outline-none",
+                        "h-5 w-5 rounded-full border-2 bg-white flex items-center justify-center shadow-md relative z-20 transition-all outline-none cursor-pointer",
                         isSelected
                           ? stage.key === "ACTIVE"
                             ? "border-emerald-500 ring-4 ring-emerald-500/15 scale-120"
@@ -300,7 +306,7 @@ export function PipelineFlowTimeline({ requests, benchCount }: PipelineFlowTimel
                           {stage.label}
                         </p>
 
-                        {/* Resource shortage — badge triggers tooltip with per-deal reasons */}
+                        {/* Resource shortage - badge triggers tooltip with per-deal reasons */}
                         {stage.hiringRisks > 0 && (
                           <TooltipProvider>
                             <Tooltip>
@@ -311,7 +317,7 @@ export function PipelineFlowTimeline({ requests, benchCount }: PipelineFlowTimel
                                 </div>
                               </TooltipTrigger>
                               <TooltipContent side="top" className="!flex-col !items-start !gap-1 max-w-[220px] whitespace-normal">
-                                <p className="font-semibold text-[11px] border-b border-slate-700 pb-1 mb-0.5 w-full">Start &lt; 6mo — urgent hiring needed</p>
+                                <p className="font-semibold text-[11px] border-b border-slate-700 pb-1 mb-0.5 w-full">Start &lt; 6mo - urgent hiring needed</p>
                                 {stage.atRiskDeals.slice(0, 5).map((deal, di) => (
                                   <p key={di} className="text-[10px] leading-snug w-full">
                                     <span className="font-semibold text-slate-200">{deal.client ?? "Unknown"}</span>
@@ -399,8 +405,8 @@ export function PipelineFlowTimeline({ requests, benchCount }: PipelineFlowTimel
                           : "bg-slate-50 border-slate-200 text-slate-700"
                     )}>
                       <span>
-                        {stageDetails.key === "ACTIVE" ? "Confirmed — Live"
-                          : stageDetails.key === "RAMP_DOWN" ? "Confirmed — Post-Delivery"
+                        {stageDetails.key === "ACTIVE" ? "Confirmed - Live"
+                          : stageDetails.key === "RAMP_DOWN" ? "Confirmed - Post-Delivery"
                             : `${stageDetails.winProb}% Win Prob.`}
                       </span>
                     </div>
@@ -517,7 +523,7 @@ export function PipelineFlowTimeline({ requests, benchCount }: PipelineFlowTimel
                               <span className="text-xs font-bold text-slate-700 min-w-[36px] text-right font-mono underline decoration-dotted decoration-slate-300 underline-offset-2">{conversion}%</span>
                             </TooltipTrigger>
                             <TooltipContent side="top" className="text-xs max-w-[220px] text-center">
-                              FTE carry-through rate — {conversion}% of gross FTE demand at <span className="font-bold">{stage.label}</span> ({stage.fte} FTE) is retained into <span className="font-bold">{nextStage.label}</span> ({nextStage.fte} FTE)
+                              FTE carry-through rate - {conversion}% of gross FTE demand at <span className="font-bold">{stage.label}</span> ({stage.fte} FTE) is retained into <span className="font-bold">{nextStage.label}</span> ({nextStage.fte} FTE)
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
@@ -538,7 +544,7 @@ export function PipelineFlowTimeline({ requests, benchCount }: PipelineFlowTimel
               })}
             </div>
 
-            {/* Analytical insight — derived from actual conversion data */}
+            {/* Analytical insight - derived from actual conversion data */}
             {(() => {
               const transitions = flowStats.slice(0, 5).map((s, i) => {
                 const next = flowStats[i + 1]!;

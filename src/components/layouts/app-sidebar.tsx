@@ -23,15 +23,16 @@ import type { LucideIcon } from "lucide-react";
 interface NavItem { title: string; href: string; icon: LucideIcon }
 interface AppSidebarProps { role: UserRole }
 
-// Pinned at the top: dashboard + the MVP use-case tools (always visible).
+// Pinned at the top: the primary tools, in the requested order.
 const adminPinnedItems: NavItem[] = [
-  { title: "Dashboard",     href: "/admin/analytics",             icon: LayoutDashboard },
-  { title: "Match Engine",  href: "/admin/resourcing/match",      icon: Zap },
-  { title: "Health Radar",  href: "/admin/resourcing/health",     icon: HeartPulse },
-  { title: "Forecast",      href: "/admin/resourcing/forecast",   icon: LineChart },
-  { title: "Scenario Planner", href: "/admin/resourcing/scenario-planner", icon: GitCompare },
-  { title: "Allocations",   href: "/admin/resourcing/allocations",icon: LayoutGrid },
-  { title: "RM Copilot",    href: "/admin/copilot",               icon: Bot },
+  { title: "Dashboard",       href: "/admin/analytics",                icon: LayoutDashboard },
+  { title: "Pipeline Kanban", href: "/admin/resourcing/kanban",        icon: LayoutGrid },
+  { title: "Simulator",       href: "/admin/resourcing/simulator",     icon: TrendingUp },
+  { title: "Match Engine",    href: "/admin/resourcing/match",         icon: Zap },
+  { title: "PM Questionnaire", href: "/admin/resourcing/questionnaire", icon: ClipboardList },
+  { title: "Extension Radar", href: "/admin/resourcing/extension",     icon: Radar },
+  { title: "Forecast",        href: "/admin/resourcing/forecast",      icon: LineChart },
+  { title: "RM Copilot",      href: "/admin/copilot",                  icon: Bot },
 ];
 
 // Collapsed by default: admin setup pages.
@@ -44,15 +45,14 @@ const adminSetupItems: NavItem[] = [
   { title: "Resource Management", href: "/admin/resource-management", icon: LayoutGrid },
 ];
 
-// Collapsed by default: secondary resourcing tools.
+// Collapsed by default: remaining resourcing tools.
 const resourcingMoreItems: NavItem[] = [
-  { title: "Pipeline Inception", href: "/admin/resourcing/pipeline",      icon: Lightbulb },
-  { title: "Pipeline Kanban",    href: "/admin/resourcing/kanban",        icon: LayoutGrid },
-  { title: "PM Questionnaire",   href: "/admin/resourcing/questionnaire", icon: ClipboardList },
-  { title: "Extension Radar",   href: "/admin/resourcing/extension",     icon: Radar },
-  { title: "Simulator",          href: "/admin/resourcing/simulator",     icon: TrendingUp },
-  { title: "Pipeline Outlook",   href: "/admin/resourcing/outlook",       icon: CalendarRange },
-  { title: "Pitch / Judge View", href: "/pitch",                          icon: Presentation },
+  { title: "Pipeline Inception", href: "/admin/resourcing/pipeline",         icon: Lightbulb },
+  { title: "Health Radar",       href: "/admin/resourcing/health",           icon: HeartPulse },
+  { title: "Scenario Planner",   href: "/admin/resourcing/scenario-planner", icon: GitCompare },
+  { title: "Allocations",        href: "/admin/resourcing/allocations",      icon: LayoutGrid },
+  { title: "Pipeline Outlook",   href: "/admin/resourcing/outlook",          icon: CalendarRange },
+  { title: "Pitch / Judge View", href: "/pitch",                             icon: Presentation },
 ];
 
 const managerNavItems: NavItem[] = [

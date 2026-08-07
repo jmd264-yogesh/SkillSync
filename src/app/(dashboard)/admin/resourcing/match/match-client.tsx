@@ -317,7 +317,7 @@ export function MatchClient({ pipelineRequests }: MatchClientProps) {
                   if (r.projectKey) parts.push(`[${r.projectKey}]`);
                   parts.push(r.client ?? "Unknown client");
                   if (r.solution) parts.push(`· ${r.solution}`);
-                  if (r.requestType) parts.push(`— ${r.requestType}`);
+                  if (r.requestType) parts.push(`- ${r.requestType}`);
                   if (r.cluster) parts.push(`(Cluster ${r.cluster})`);
                   return (
                     <SelectItem key={r.id} value={r.id}>{parts.join(" ")}</SelectItem>
@@ -446,7 +446,7 @@ export function MatchClient({ pipelineRequests }: MatchClientProps) {
                 <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-red-600" />
                 <span>
                   <span className="font-semibold">Hiring lead-time alert: </span>
-                  Start date is {monthsUntil!.toFixed(1)} months away — under the 6-month hiring threshold.
+                  Start date is {monthsUntil!.toFixed(1)} months away - under the 6-month hiring threshold.
                   Engage Talent Acquisition immediately if no internal candidates match.
                 </span>
               </div>

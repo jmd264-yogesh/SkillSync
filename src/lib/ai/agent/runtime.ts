@@ -159,5 +159,5 @@ export async function runAgent(params: {
     }
   }
 
-  return { finalText: result.response.text(), trace };
+  return { finalText: result.response.text().replace(/[—–]/g, "-"), trace };
 }

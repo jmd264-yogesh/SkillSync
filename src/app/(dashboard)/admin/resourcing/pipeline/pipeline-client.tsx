@@ -229,11 +229,11 @@ export function PipelineLedger({ requests }: { requests: PipelineRequestWithCont
                           <p className="text-xs font-semibold text-slate-650 leading-tight">{r.solution}</p>
                           <p className="text-[9px] text-slate-400 mt-1 flex items-center gap-0.5 font-bold uppercase tracking-wider">
                             <Layers className="h-2.5 w-2.5 shrink-0" />
-                            Priority #{r.solutionPriority !== 99 ? r.solutionPriority : "—"}
+                            Priority #{r.solutionPriority !== 99 ? r.solutionPriority : "-"}
                           </p>
                         </div>
                       ) : (
-                        <span className="text-xs text-slate-400 font-medium">—</span>
+                        <span className="text-xs text-slate-400 font-medium">-</span>
                       )}
                     </TableCell>
 
@@ -255,7 +255,7 @@ export function PipelineLedger({ requests }: { requests: PipelineRequestWithCont
                           )}
                         </div>
                       ) : (
-                        <span className="text-xs text-slate-400 font-medium">—</span>
+                        <span className="text-xs text-slate-400 font-medium">-</span>
                       )}
                     </TableCell>
 
@@ -287,7 +287,7 @@ export function PipelineLedger({ requests }: { requests: PipelineRequestWithCont
                           {r.serviceLine}
                         </Badge>
                       ) : (
-                        <span className="text-xs text-slate-400 font-medium">—</span>
+                        <span className="text-xs text-slate-400 font-medium">-</span>
                       )}
                     </TableCell>
 
@@ -307,7 +307,7 @@ export function PipelineLedger({ requests }: { requests: PipelineRequestWithCont
       <div ref={sentinelRef} className="h-2" />
       {hasMore && (
         <p className="text-center text-[10px] text-slate-400 pb-2 font-bold uppercase tracking-wider">
-          Showing {visibleCount} of {filtered.length} deals — scroll for more
+          Showing {visibleCount} of {filtered.length} deals - scroll for more
         </p>
       )}
     </div>

@@ -472,7 +472,7 @@ function AddSkillRequirementForm({
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <Label className="text-[10px] font-medium">Required Level (1–5)</Label>
+              <Label className="text-[10px] font-medium">Required Level (1-5)</Label>
               <Input name="requiredLevel" type="number" min="1" max="5" defaultValue="3" className="mt-0.5 h-8 text-xs" />
             </div>
             <div>

@@ -72,7 +72,7 @@ const CRITICALITY_COLORS: Record<CriticalityLevel, string> = {
 
 function AllocLabel({ fte, loading }: { fte: number; loading: boolean }) {
   if (loading) return <Skeleton className="h-3.5 w-16 rounded" />;
-  if (fte === 0) return <span className="text-xs tabular-nums text-slate-300 w-16 text-right">—</span>;
+  if (fte === 0) return <span className="text-xs tabular-nums text-slate-300 w-16 text-right">-</span>;
   const display = fte >= 1 ? `${fte}× 100%` : `${Math.round(fte * 100)}%`;
   return (
     <span className="text-xs font-semibold tabular-nums text-slate-800 text-right">
@@ -543,7 +543,7 @@ export function SimulatorClient({ skills }: SimulatorClientProps) {
       setResources(data);
       setExpandedCandidates(new Set());
     } catch {
-      // silently ignore — show empty state
+      // silently ignore - show empty state
     } finally {
       setResourcesLoading(false);
     }
@@ -678,7 +678,7 @@ export function SimulatorClient({ skills }: SimulatorClientProps) {
               className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 transition-colors"
             >
               <span className="font-medium">Source Systems</span>
-              <span className="text-slate-400">(optional — affects Chennai engineering headcount)</span>
+              <span className="text-slate-400">(optional - affects Chennai engineering headcount)</span>
               <span className="ml-1 text-slate-400">{showSystems ? "▲" : "▼"}</span>
               {sourceSystems.length > 0 && (
                 <span className="ml-1 bg-violet-100 text-violet-700 text-[10px] font-semibold px-1.5 py-0.5 rounded-full">
@@ -727,7 +727,7 @@ export function SimulatorClient({ skills }: SimulatorClientProps) {
               className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 transition-colors"
             >
               <span className="font-medium">Tech Stack</span>
-              <span className="text-slate-400">(optional — improves candidate matching)</span>
+              <span className="text-slate-400">(optional - improves candidate matching)</span>
               <span className="ml-1 text-slate-400">{showTechStack ? "▲" : "▼"}</span>
               {techStack.length > 0 && (
                 <span className="ml-1 bg-indigo-100 text-indigo-700 text-[10px] font-semibold px-1.5 py-0.5 rounded-full">
@@ -790,10 +790,10 @@ export function SimulatorClient({ skills }: SimulatorClientProps) {
                       Use Existing Product
                     </span>
                     {hasProducts ? (
-                      <span className="text-xs text-slate-400">(optional — reduces engineer effort by 50%)</span>
+                      <span className="text-xs text-slate-400">(optional - reduces engineer effort by 50%)</span>
                     ) : (
                       <span className="text-xs text-slate-400">
-                        {projectType ? "— no existing products for this project type" : "— select a project type first"}
+                        {projectType ? "- no existing products for this project type" : "- select a project type first"}
                       </span>
                     )}
                     {useExistingProduct && existingProduct && (
@@ -863,7 +863,7 @@ export function SimulatorClient({ skills }: SimulatorClientProps) {
             <CardTitle className="text-sm font-semibold text-slate-700">
               Role Allocation
               <span className="ml-2 text-xs font-normal text-muted-foreground">
-                — run the simulation to see allocations
+                - run the simulation to see allocations
               </span>
             </CardTitle>
           </CardHeader>
@@ -898,7 +898,7 @@ export function SimulatorClient({ skills }: SimulatorClientProps) {
                 <CardTitle className="text-sm font-semibold text-slate-700">Historical Baseline</CardTitle>
                 {!loading && (
                   <span className="text-xs text-muted-foreground">
-                    {baseline ? "— exact match found" : "— no match for this combination"}
+                    {baseline ? "- exact match found" : "- no match for this combination"}
                   </span>
                 )}
               </div>
@@ -1073,12 +1073,12 @@ export function SimulatorClient({ skills }: SimulatorClientProps) {
                       </Badge>
                       {rm.candidates.length === 0 && (
                         <span className="text-[10px] text-amber-600 font-medium">
-                          No internal candidates — consider external hire
+                          No internal candidates - consider external hire
                         </span>
                       )}
                       {rm.candidates.length > 0 && rm.candidates[0]?.isPromoted && (
                         <span className="text-[10px] text-violet-700 bg-violet-50 border border-violet-200 font-medium px-2 py-0.5 rounded-full">
-                          No {rm.role} available — showing promoted {rm.candidates[0].promotedFrom}s
+                          No {rm.role} available - showing promoted {rm.candidates[0].promotedFrom}s
                         </span>
                       )}
                     </div>
@@ -1140,7 +1140,7 @@ export function SimulatorClient({ skills }: SimulatorClientProps) {
                                       )}
                                     </td>
                                     <td className="px-3 py-2.5 text-slate-500 hidden sm:table-cell">
-                                      {c.jobName ?? c.designationName ?? "—"}
+                                      {c.jobName ?? c.designationName ?? "-"}
                                       {c.coeName && <span className="text-slate-400 ml-1">· {c.coeName}</span>}
                                     </td>
                                     <td className="px-3 py-2.5 text-center">

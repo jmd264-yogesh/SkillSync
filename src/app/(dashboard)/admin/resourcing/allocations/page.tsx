@@ -53,7 +53,7 @@ async function AllocationTable() {
 
   return (
     <div className="space-y-4">
-      {/* Bench & Under-Utilized panel — shown before allocating externally */}
+      {/* Bench & Under-Utilized panel - shown before allocating externally */}
       <BenchResourcesPanel employees={underUtilized} />
 
       {/* P1 - Decision line */}

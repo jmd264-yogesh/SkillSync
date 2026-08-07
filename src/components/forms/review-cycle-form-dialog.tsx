@@ -83,7 +83,7 @@ export function ReviewCycleFormDialog({ open, onOpenChange, cycle }: Props) {
             <Label htmlFor="name" className="text-sm font-medium">Cycle Name</Label>
             <Input
               id="name"
-              placeholder="e.g. H1 2026, Jan–Jun 2026"
+              placeholder="e.g. H1 2026, Jan-Jun 2026"
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="h-9 rounded-lg text-sm"

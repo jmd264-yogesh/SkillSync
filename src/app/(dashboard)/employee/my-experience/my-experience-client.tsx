@@ -186,7 +186,7 @@ export function MyExperienceClient({ docs }: Props) {
                     )}
                     {doc.startDate && doc.endDate && (
                       <span className="text-[11px] text-slate-400">
-                        {new Date(doc.startDate).getFullYear()}–{new Date(doc.endDate).getFullYear()}
+                        {new Date(doc.startDate).getFullYear()}-{new Date(doc.endDate).getFullYear()}
                       </span>
                     )}
                   </div>

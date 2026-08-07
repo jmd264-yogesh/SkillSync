@@ -144,7 +144,7 @@ export function TransitionClient({ designations }: TransitionClientProps) {
             </div>
             <div className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
               <Clock className="h-3.5 w-3.5" />
-              {result.estimatedMonthsMin}–{result.estimatedMonthsMax} months estimated
+              {result.estimatedMonthsMin}-{result.estimatedMonthsMax} months estimated
             </div>
           </div>
 

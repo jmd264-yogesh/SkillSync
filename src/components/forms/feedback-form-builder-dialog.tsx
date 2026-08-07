@@ -251,7 +251,7 @@ export function FeedbackFormBuilderDialog({ open, onOpenChange, reviewCycleId, a
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="RATING">Rating (1–5)</SelectItem>
+                          <SelectItem value="RATING">Rating (1-5)</SelectItem>
                           <SelectItem value="TEXT">Text</SelectItem>
                         </SelectContent>
                       </Select>
