@@ -85,15 +85,6 @@ function computeScore(
   maxForwardWeighted: number,
   maxFyBooked: number
 ): number {
-  // Level score
-  const levelMap: Record<string, number> = {
-    Gold: 100,
-    Silver: 70,
-    Bronze: 40,
-    Servicing: 55,
-  };
-  const levelScore = levelMap[level] ?? 30;
-
   // Status score
   const statusMap: Record<string, number> = {
     "▲▲": 100,
@@ -105,7 +96,7 @@ function computeScore(
   };
   const statusScore = statusMap[status] ?? 40;
 
-  // Forward pipeline score (months +1, +2, +3 weighted sum normalised)
+  // Forward pipeline score
   const forwardScore =
     maxForwardWeighted > 0
       ? Math.min(100, (forwardWeighted / maxForwardWeighted) * 100)
@@ -115,11 +106,11 @@ function computeScore(
   const fyScore =
     maxFyBooked > 0 ? Math.min(100, (fyBooked / maxFyBooked) * 100) : 0;
 
-  const raw =
-    levelScore * 0.25 +
-    statusScore * 0.25 +
-    forwardScore * 0.3 +
-    fyScore * 0.2;
+  // If FY booked revenue exists (> 0), it dominates calculation (80% FY booked, 10% forward pipeline, 10% trend)
+  // If FY booked revenue is 0 or missing, fallback entirely to Forward Pipeline (60%) + Revenue Trend (40%)
+  const raw = fyBooked > 0
+    ? fyScore * 0.80 + forwardScore * 0.10 + statusScore * 0.10
+    : forwardScore * 0.60 + statusScore * 0.40;
 
   return Math.round(raw);
 }

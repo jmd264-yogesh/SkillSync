@@ -152,12 +152,6 @@ function buildSignals(row: {
   extensionScore: number;
   overrideStatus?: string | null;
 }): ExtensionSignal[] {
-  const levelScoreMap: Record<string, number> = {
-    Gold: 100,
-    Silver: 70,
-    Bronze: 40,
-    Servicing: 55,
-  };
   const statusScoreMap: Record<string, number> = {
     "▲▲": 100,
     "▲": 80,
@@ -167,29 +161,23 @@ function buildSignals(row: {
     "-": 50,
   };
 
-  const levelScore = levelScoreMap[row.level ?? ""] ?? 30;
   const statusScore = statusScoreMap[row.status ?? ""] ?? 40;
+  const hasFyBooked = row.fyBooked > 0;
 
   const baseSignals: ExtensionSignal[] = [
     {
-      label: "Client tier",
-      value: row.level ?? "Unknown",
-      score: levelScore,
-      weight: 0.25,
-      colour: levelColour(row.level),
-    },
-    {
-      label: "Revenue trend",
-      value: STATUS_LABEL[row.status ?? "-"] ?? "Unknown",
-      score: statusScore,
-      weight: 0.25,
-      colour: statusColour(row.status),
+      label: "FY booked revenue",
+      value: fmt(row.fyBooked),
+      score: row.fyBooked > 200_000 ? 90 : row.fyBooked > 50_000 ? 65 : row.fyBooked > 0 ? 40 : 5,
+      weight: hasFyBooked ? 0.80 : 0.00,
+      colour:
+        row.fyBooked > 200_000 ? "green" : row.fyBooked > 50_000 ? "amber" : "red",
     },
     {
       label: "Forward pipeline (3 months)",
       value: fmt(row.forwardWeighted),
       score: row.forwardWeighted > 50_000 ? 85 : row.forwardWeighted > 10_000 ? 60 : row.forwardWeighted > 0 ? 40 : 0,
-      weight: 0.30,
+      weight: hasFyBooked ? 0.10 : 0.60,
       colour:
         row.forwardWeighted > 50_000
           ? "green"
@@ -200,12 +188,11 @@ function buildSignals(row: {
           : "red",
     },
     {
-      label: "FY booked revenue",
-      value: fmt(row.fyBooked),
-      score: row.fyBooked > 200_000 ? 90 : row.fyBooked > 50_000 ? 65 : row.fyBooked > 0 ? 40 : 5,
-      weight: 0.20,
-      colour:
-        row.fyBooked > 200_000 ? "green" : row.fyBooked > 50_000 ? "amber" : "red",
+      label: "Revenue trend",
+      value: STATUS_LABEL[row.status ?? "-"] ?? "Unknown",
+      score: statusScore,
+      weight: hasFyBooked ? 0.10 : 0.40,
+      colour: statusColour(row.status),
     },
   ];
 

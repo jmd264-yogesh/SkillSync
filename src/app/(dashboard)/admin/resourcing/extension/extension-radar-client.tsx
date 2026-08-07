@@ -2,10 +2,8 @@
 
 import { useState, useMemo } from "react";
 import {
-  TrendingUp, TrendingDown, Minus, AlertTriangle,
   ChevronUp, ChevronDown, Search, Filter,
-  BarChart3, DollarSign, Activity, Shield,
-  ArrowUpRight, Star, Users, Info,
+  Activity, Shield, Info,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,7 +42,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 const BAND_CONFIG = {
   VERY_LIKELY: {
-    label: "Very Likely",
+    label: "Definitely Extend",
     bg: "bg-emerald-50",
     border: "border-emerald-200",
     text: "text-emerald-700",
@@ -53,7 +51,7 @@ const BAND_CONFIG = {
     dot: "bg-emerald-500",
   },
   LIKELY: {
-    label: "Likely",
+    label: "Likely Extend",
     bg: "bg-blue-50",
     border: "border-blue-200",
     text: "text-blue-700",
@@ -71,7 +69,7 @@ const BAND_CONFIG = {
     dot: "bg-amber-500",
   },
   UNLIKELY: {
-    label: "Unlikely",
+    label: "Won't Extend",
     bg: "bg-red-50",
     border: "border-red-200",
     text: "text-red-700",
@@ -104,24 +102,7 @@ const SIGNAL_COLOUR: Record<string, string> = {
   muted: "bg-slate-50 border-slate-200 text-slate-500",
 };
 
-function StatusArrow({ status }: { status: string | null }) {
-  if (!status) return <span className="text-slate-300">—</span>;
-  const icon =
-    status === "▲▲" ? <TrendingUp className="h-4 w-4 text-emerald-500" /> :
-    status === "▲"  ? <ChevronUp className="h-4 w-4 text-emerald-400" /> :
-    status === "▶"  ? <Minus className="h-4 w-4 text-amber-400" /> :
-    status === "▼"  ? <ChevronDown className="h-4 w-4 text-red-400" /> :
-    status === "▼▼" ? <TrendingDown className="h-4 w-4 text-red-500" /> :
-    <Minus className="h-4 w-4 text-slate-300" />;
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger>{icon}</TooltipTrigger>
-        <TooltipContent>{STATUS_LABEL[status] ?? status}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
+
 
 // ── Score Ring ────────────────────────────────────────────────
 function ScoreRing({ score, band }: { score: number; band: string }) {
@@ -149,27 +130,7 @@ function ScoreRing({ score, band }: { score: number; band: string }) {
   );
 }
 
-// ── Signal Chip ───────────────────────────────────────────────
-function SignalChip({ signal }: { signal: ExtensionSignal }) {
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger>
-          <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border ${SIGNAL_COLOUR[signal.colour]}`}>
-            {signal.label}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>
-          <div className="text-xs">
-            <div className="font-semibold">{signal.label}</div>
-            <div>{signal.value}</div>
-            <div className="text-slate-400">Weight: {Math.round(signal.weight * 100)}%</div>
-          </div>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
+
 
 import { setExtensionForecastOverride } from "@/server/actions/extension-forecast";
 import { Edit3, Sparkles } from "lucide-react";
@@ -298,6 +259,7 @@ function OverrideDialog({
 }
 
 // ── Card ──────────────────────────────────────────────────────
+// ── Card ──────────────────────────────────────────────────────
 function ExtensionCard({
   row,
   onEdit,
@@ -305,119 +267,78 @@ function ExtensionCard({
   row: ExtensionForecastRow;
   onEdit: (row: ExtensionForecastRow) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const cfg = BAND_CONFIG[row.effectiveBand as keyof typeof BAND_CONFIG] ?? BAND_CONFIG.UNKNOWN;
-  const levelCls = LEVEL_BADGE[row.level ?? ""] ?? LEVEL_BADGE.Bronze;
   const hasOverride = Boolean(row.overrideStatus && row.overrideStatus !== "NONE");
 
   return (
-    <div className={`rounded-xl border ${cfg.border} ${cfg.bg} p-4 flex flex-col justify-between hover:shadow-md transition-all duration-200 relative group`}>
-      {/* Card Header & Content */}
-      <div className="space-y-3">
-        {/* Top Header */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0 pr-1">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-[14px] font-bold text-slate-900 truncate tracking-tight">{row.portCo}</span>
-              <StatusArrow status={row.status} />
-            </div>
-            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-              <span className="text-[11px] font-medium text-slate-500">{row.fund}</span>
-              {row.level && (
-                <span className={`text-[10px] font-semibold px-1.5 py-0.2 rounded-full border ${levelCls}`}>
-                  {row.level}
-                </span>
-              )}
-              {row.cluster && (
-                <span className="text-[10px] text-slate-500 bg-slate-150 px-1.5 py-0.2 rounded-full font-medium">
-                  {row.cluster}
-                </span>
-              )}
-              {hasOverride && (
-                <span className="text-[9px] font-bold text-violet-700 bg-violet-100 border border-violet-200 px-1.5 py-0.2 rounded-full">
-                  Override
-                </span>
-              )}
-            </div>
+    <div className={`rounded-xl border ${cfg.border} ${cfg.bg} p-4 flex flex-col justify-between hover:shadow-md transition-all duration-200 relative group space-y-3`}>
+      {/* Top Header */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0 pr-1">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[14px] font-bold text-slate-900 truncate tracking-tight">{row.portCo}</span>
           </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <div className="flex flex-col items-end gap-0.5">
-              <ScoreRing score={row.effectiveScore} band={row.effectiveBand} />
-              <span className={`text-[9px] font-bold uppercase tracking-wider ${cfg.text}`}>
-                {cfg.label}
+          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+            <span className="text-[11px] font-medium text-slate-500">Fund: {row.fund}</span>
+            {row.cluster && (
+              <span className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded-full font-medium">
+                {row.cluster}
               </span>
-            </div>
-            <button
-              onClick={() => onEdit(row)}
-              className="p-1.5 rounded-lg bg-white/90 border border-slate-200 text-slate-400 hover:text-violet-600 hover:border-violet-300 hover:bg-white transition-all shadow-2xs"
-              title="Override extension data"
-            >
-              <Edit3 className="h-3.5 w-3.5" />
-            </button>
+            )}
+            {hasOverride && (
+              <span className="text-[9px] font-bold text-violet-700 bg-violet-100 border border-violet-200 px-1.5 py-0.2 rounded-full">
+                Override
+              </span>
+            )}
           </div>
         </div>
 
-        {/* Revenue Summary Grid */}
-        <div className="grid grid-cols-2 gap-2">
-          <div className="bg-white/70 rounded-lg p-2 border border-white/90 shadow-2xs">
-            <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">FY Booked</div>
-            <div className="text-[13px] font-bold text-slate-800">{fmt(row.fyBooked)}</div>
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-col items-end gap-0.5">
+            <ScoreRing score={row.effectiveScore} band={row.effectiveBand} />
+            <span className={`text-[9px] font-bold uppercase tracking-wider ${cfg.text}`}>
+              {cfg.label}
+            </span>
           </div>
-          <div className="bg-white/70 rounded-lg p-2 border border-white/90 shadow-2xs">
-            <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">3M Pipeline</div>
-            <div className="text-[13px] font-bold text-slate-800">{fmt(row.forwardWeighted)}</div>
-          </div>
+          <button
+            onClick={() => onEdit(row)}
+            className="p-1.5 rounded-lg bg-white/90 border border-slate-200 text-slate-400 hover:text-violet-600 hover:border-violet-300 hover:bg-white transition-all shadow-2xs"
+            title="Override extension data"
+          >
+            <Edit3 className="h-3.5 w-3.5" />
+          </button>
         </div>
-
-        {/* Signal Chips */}
-        <div className="flex flex-wrap gap-1 pt-0.5">
-          {row.signals.map((s) => (
-            <SignalChip key={s.label} signal={s} />
-          ))}
-        </div>
-
-        {row.overrideNotes && (
-          <div className="text-[11px] text-slate-600 bg-white/80 p-2 rounded-lg border border-slate-200/60 italic leading-snug">
-            "{row.overrideNotes}"
-          </div>
-        )}
       </div>
 
-      {/* Footer / Expand Button */}
-      <div className="pt-2">
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-800 transition-colors"
-        >
-          {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-          {expanded ? "Hide" : "Show"} monthly breakdown
-        </button>
+      {row.overrideNotes && (
+        <div className="text-[11px] text-slate-600 bg-white/80 p-2 rounded-lg border border-slate-200/60 italic leading-snug">
+          "{row.overrideNotes}"
+        </div>
+      )}
 
-        {expanded && (
-          <div className="border-t border-white/80 pt-2.5 mt-2 space-y-2">
-            <div className="grid grid-cols-3 gap-1 text-[10px] font-semibold text-slate-400 px-1">
-              <span>Month</span><span>Booked</span><span>Weighted</span>
-            </div>
-            {[
-              { label: "Jul-26 (current)", booked: row.bookedCurrent, weighted: row.weightedCurrent },
-              { label: "Aug-26", booked: row.bookedMonth1, weighted: row.weightedMonth1 },
-              { label: "Sep-26", booked: row.bookedMonth2, weighted: row.weightedMonth2 },
-              { label: "Oct-26", booked: row.bookedMonth3, weighted: row.weightedMonth3 },
-            ].map((m) => (
-              <div key={m.label} className="grid grid-cols-3 gap-1 text-[11px] px-1">
-                <span className="text-slate-500">{m.label}</span>
-                <span className="font-medium text-slate-700">{fmt(m.booked)}</span>
-                <span className="font-medium text-slate-700">{fmt(m.weighted)}</span>
-              </div>
-            ))}
+      {/* Monthly Breakdown (Always visible) */}
+      <div className="border-t border-white/80 pt-2.5 space-y-1.5">
+        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Monthly Breakdown</div>
+        <div className="grid grid-cols-3 gap-1 text-[10px] font-semibold text-slate-400 px-1">
+          <span>Month</span><span>Booked</span><span>Weighted</span>
+        </div>
+        {[
+          { label: "Jul-26 (curr)", booked: row.bookedCurrent, weighted: row.weightedCurrent },
+          { label: "Aug-26", booked: row.bookedMonth1, weighted: row.weightedMonth1 },
+          { label: "Sep-26", booked: row.bookedMonth2, weighted: row.weightedMonth2 },
+          { label: "Oct-26", booked: row.bookedMonth3, weighted: row.weightedMonth3 },
+        ].map((m) => (
+          <div key={m.label} className="grid grid-cols-3 gap-1 text-[11px] px-1">
+            <span className="text-slate-500">{m.label}</span>
+            <span className="font-medium text-slate-700">{fmt(m.booked)}</span>
+            <span className="font-medium text-slate-700">{fmt(m.weighted)}</span>
+          </div>
+        ))}
 
-            {(row.accountManager || row.teamOwner) && (
-              <div className="flex items-center gap-3 pt-1 border-t border-white/60 text-[11px] text-slate-500">
-                {row.accountManager && <span><span className="font-medium">AM:</span> {row.accountManager}</span>}
-                {row.teamOwner && <span><span className="font-medium">TO:</span> {row.teamOwner}</span>}
-              </div>
-            )}
+        {(row.accountManager || row.teamOwner) && (
+          <div className="flex items-center gap-3 pt-2 border-t border-white/60 text-[11px] text-slate-500">
+            {row.accountManager && <span><span className="font-medium">AM:</span> {row.accountManager}</span>}
+            {row.teamOwner && <span><span className="font-medium">TO:</span> {row.teamOwner}</span>}
           </div>
         )}
       </div>
@@ -427,56 +348,10 @@ function ExtensionCard({
 
 // ── Summary KPI Bar ───────────────────────────────────────────
 function SummaryBar({ summary }: { summary: ExtensionSummary }) {
-  const kpis = [
-    {
-      label: "Portfolio Clients",
-      value: summary.totalEntries,
-      icon: Users,
-      colour: "text-indigo-600",
-      bg: "bg-indigo-50",
-    },
-    {
-      label: "Avg Extension Score",
-      value: `${summary.avgScore}/100`,
-      icon: Activity,
-      colour: "text-emerald-600",
-      bg: "bg-emerald-50",
-    },
-    {
-      label: "FY Booked Revenue",
-      value: fmt(summary.totalFyBooked),
-      icon: DollarSign,
-      colour: "text-blue-600",
-      bg: "bg-blue-50",
-    },
-    {
-      label: "Forward Weighted Pipeline",
-      value: fmt(summary.totalFyWeighted),
-      icon: BarChart3,
-      colour: "text-purple-600",
-      bg: "bg-purple-50",
-    },
-  ];
-
   const bandOrder = ["VERY_LIKELY", "LIKELY", "UNCERTAIN", "UNLIKELY"] as const;
 
   return (
     <div className="space-y-4">
-      {/* KPI row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {kpis.map((k) => (
-          <div key={k.label} className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 flex items-center gap-3">
-            <div className={`${k.bg} p-2 rounded-lg shrink-0`}>
-              <k.icon className={`h-4 w-4 ${k.colour}`} />
-            </div>
-            <div>
-              <div className="text-[11px] text-slate-400 font-medium">{k.label}</div>
-              <div className="text-[16px] font-bold text-slate-800">{k.value}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-
       {/* Band distribution */}
       <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
         <div className="flex items-center gap-2 mb-3">
@@ -568,12 +443,10 @@ function ExtensionTable({
       <Table>
         <TableHeader>
           <TableRow className="bg-slate-50 border-b border-slate-100">
-            <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide w-[200px]">
-              <SortBtn k="portCo" label="PortCo" />
+            <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide w-[220px]">
+              <SortBtn k="portCo" label="Project / PortCo" />
             </TableHead>
             <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Fund</TableHead>
-            <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Tier</TableHead>
-            <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Trend</TableHead>
             <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
               <SortBtn k="effectiveScore" label="Score" />
             </TableHead>
@@ -609,21 +482,6 @@ function ExtensionTable({
                   </div>
                 </TableCell>
                 <TableCell className="text-[12px] text-slate-500">{row.fund}</TableCell>
-                <TableCell>
-                  {row.level && (
-                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${levelCls}`}>
-                      {row.level}
-                    </span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-1">
-                    <StatusArrow status={row.status} />
-                    <span className="text-[11px] text-slate-400 hidden xl:block">
-                      {STATUS_LABEL[row.status ?? ""] ?? ""}
-                    </span>
-                  </div>
-                </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
                     <div className="w-16 h-1.5 rounded-full bg-slate-100 overflow-hidden">
@@ -667,7 +525,7 @@ interface ExtensionRadarClientProps {
   summary: ExtensionSummary;
 }
 
-export function ExtensionRadarClient({ rows: initialRows, summary }: ExtensionRadarClientProps) {
+export function ExtensionRadarClient({ rows: initialRows, summary: initialSummary }: ExtensionRadarClientProps) {
   const [rows, setRows] = useState<ExtensionForecastRow[]>(initialRows);
   const [view, setView] = useState<"cards" | "table">("cards");
   const [search, setSearch] = useState("");
@@ -684,8 +542,32 @@ export function ExtensionRadarClient({ rows: initialRows, summary }: ExtensionRa
   }
 
   function handleRowUpdated(updated: ExtensionForecastRow) {
-    setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+    setRows((prev) =>
+      prev
+        .map((r) => (r.id === updated.id ? updated : r))
+        .sort((a, b) => b.effectiveScore - a.effectiveScore)
+    );
   }
+
+  // Dynamic summary calculation whenever rows change
+  const currentSummary = useMemo(() => {
+    const byBand: Record<string, number> = {
+      VERY_LIKELY: 0,
+      LIKELY: 0,
+      UNCERTAIN: 0,
+      UNLIKELY: 0,
+      UNKNOWN: 0,
+    };
+    for (const r of rows) {
+      const b = r.effectiveBand ?? "UNKNOWN";
+      byBand[b] = (byBand[b] ?? 0) + 1;
+    }
+    return {
+      ...initialSummary,
+      totalEntries: rows.length,
+      byBand: byBand as Record<ExtensionBand, number>,
+    };
+  }, [rows, initialSummary]);
 
   const clusters = useMemo(() => {
     const s = new Set(rows.map((r) => r.cluster).filter(Boolean) as string[]);
@@ -716,19 +598,7 @@ export function ExtensionRadarClient({ rows: initialRows, summary }: ExtensionRa
                 <Activity className="h-5 w-5 text-white" />
               </div>
               <h1 className="text-[22px] font-bold text-slate-900">Extension Radar</h1>
-              <span className="text-[11px] bg-violet-100 text-violet-700 font-semibold px-2 py-0.5 rounded-full border border-violet-200">
-                AI Assisted + Human Intent
-              </span>
             </div>
-            <p className="text-[13px] text-slate-500 max-w-xl">
-              Forecasts project extension likelihood for each portfolio client based on revenue pipeline,
-              client tier, and manual PM/RM extension intent inputs.
-            </p>
-            <p className="text-[11px] text-slate-400 mt-1">
-              Data month: <span className="font-semibold text-slate-600">Jul 2026</span>
-              {" · "}
-              <span className="text-slate-400">{rows.length} clients tracked</span>
-            </p>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
@@ -743,7 +613,7 @@ export function ExtensionRadarClient({ rows: initialRows, summary }: ExtensionRa
               <TooltipContent className="max-w-[280px]">
                 <div className="text-xs space-y-1">
                   <p className="font-semibold">How scores are computed</p>
-                  <p>Client tier (25%) + Revenue trend (25%) + Forward weighted pipeline (30%) + FY booked revenue (20%). PM Manual Overrides take precedent.</p>
+                  <p>FY Booked Revenue (80%) + 3M Forward Pipeline (10%) + Revenue Trend (10%). If FY Booked is £0, falls back to 3M Pipeline (60%) + Revenue Trend (40%). PM Manual Overrides take precedent.</p>
                   <p className="text-slate-400">Click the Edit icon on any client card to input extension intent.</p>
                 </div>
               </TooltipContent>
@@ -752,54 +622,9 @@ export function ExtensionRadarClient({ rows: initialRows, summary }: ExtensionRa
         </div>
 
         {/* Summary bar */}
-        <SummaryBar summary={summary} />
+        <SummaryBar summary={currentSummary} />
 
-        {/* Risk / Opportunity highlights */}
-        {summary.topRisks.length > 0 && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <AlertTriangle className="h-4 w-4 text-red-500" />
-                <span className="text-[12px] font-bold text-red-700 uppercase tracking-wide">Top Extension Risks</span>
-              </div>
-              <div className="space-y-2">
-                {summary.topRisks.slice(0, 3).map((r) => (
-                  <div key={r.id} className="flex items-center justify-between gap-2 bg-white/60 rounded-lg px-3 py-2">
-                    <div>
-                      <div className="text-[13px] font-semibold text-slate-800">{r.portCo}</div>
-                      <div className="text-[11px] text-slate-400">{r.fund}</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <StatusArrow status={r.status} />
-                      <span className="text-[12px] font-bold text-red-600">{r.effectiveScore}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
 
-            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Star className="h-4 w-4 text-emerald-500" />
-                <span className="text-[12px] font-bold text-emerald-700 uppercase tracking-wide">Highest Forward Pipeline</span>
-              </div>
-              <div className="space-y-2">
-                {summary.topOpportunities.slice(0, 3).map((r) => (
-                  <div key={r.id} className="flex items-center justify-between gap-2 bg-white/60 rounded-lg px-3 py-2">
-                    <div>
-                      <div className="text-[13px] font-semibold text-slate-800">{r.portCo}</div>
-                      <div className="text-[11px] text-slate-400">{r.fund}</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[12px] font-bold text-emerald-700">{fmt(r.forwardWeighted)}</span>
-                      <ArrowUpRight className="h-3.5 w-3.5 text-emerald-500" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Filters + view toggle */}
         <div className="flex items-center gap-2 flex-wrap">
@@ -814,39 +639,40 @@ export function ExtensionRadarClient({ rows: initialRows, summary }: ExtensionRa
             />
           </div>
 
-          <Select value={filterLevel} onValueChange={(v) => setFilterLevel(v ?? "all")}>
-            <SelectTrigger className="h-8 text-[12px] w-[130px] border-slate-200">
-              <SelectValue placeholder="All tiers" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All tiers</SelectItem>
-              <SelectItem value="Gold">Gold</SelectItem>
-              <SelectItem value="Silver">Silver</SelectItem>
-              <SelectItem value="Bronze">Bronze</SelectItem>
-              <SelectItem value="Servicing">Servicing</SelectItem>
-            </SelectContent>
-          </Select>
+
 
           <Select value={filterBand} onValueChange={(v) => setFilterBand(v ?? "all")}>
-            <SelectTrigger className="h-8 text-[12px] w-[140px] border-slate-200">
-              <SelectValue placeholder="All bands" />
+            <SelectTrigger className="h-8 text-[12px] min-w-[160px] w-auto border-slate-200 bg-white">
+              <span className="truncate">
+                <span className="font-semibold text-slate-500">Likelihood: </span>
+                <span className="font-medium text-slate-800">
+                  {filterBand === "all"
+                    ? "All Bands"
+                    : BAND_CONFIG[filterBand as keyof typeof BAND_CONFIG]?.label ?? filterBand}
+                </span>
+              </span>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All bands</SelectItem>
-              <SelectItem value="VERY_LIKELY">Very Likely</SelectItem>
-              <SelectItem value="LIKELY">Likely</SelectItem>
+              <SelectItem value="all">All Bands</SelectItem>
+              <SelectItem value="VERY_LIKELY">Definitely Extend</SelectItem>
+              <SelectItem value="LIKELY">Likely Extend</SelectItem>
               <SelectItem value="UNCERTAIN">Uncertain</SelectItem>
-              <SelectItem value="UNLIKELY">Unlikely</SelectItem>
+              <SelectItem value="UNLIKELY">Won't Extend</SelectItem>
             </SelectContent>
           </Select>
 
           {clusters.length > 1 && (
             <Select value={filterCluster} onValueChange={(v) => setFilterCluster(v ?? "all")}>
-              <SelectTrigger className="h-8 text-[12px] w-[130px] border-slate-200">
-                <SelectValue placeholder="All clusters" />
+              <SelectTrigger className="h-8 text-[12px] min-w-[150px] w-auto border-slate-200 bg-white">
+                <span className="truncate">
+                  <span className="font-semibold text-slate-500">Cluster: </span>
+                  <span className="font-medium text-slate-800">
+                    {filterCluster === "all" ? "All Clusters" : filterCluster}
+                  </span>
+                </span>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All clusters</SelectItem>
+                <SelectItem value="all">All Clusters</SelectItem>
                 {clusters.map((c) => (
                   <SelectItem key={c} value={c}>{c}</SelectItem>
                 ))}
