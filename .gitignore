@@ -41,7 +41,6 @@ yarn-error.log*
 next-env.d.ts
 
 # prisma sqlite local database (never commit)
-prisma/*.db
 prisma/*.db-journal
 prisma/*.db-shm
 prisma/*.db-wal
