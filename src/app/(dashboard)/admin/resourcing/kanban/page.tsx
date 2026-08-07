@@ -342,13 +342,13 @@ export default function KanbanPage() {
 
   return (
     <div className="flex flex-col gap-6 min-w-0 w-full overflow-hidden">
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+      <div className="flex flex-col gap-4">
         <PageHeader
           title="Pipeline Kanban Board"
           description="Visual pipeline overview of opportunities commencing during the selected period."
         />
         
-        <div className="flex flex-wrap items-center gap-4 self-start xl:self-auto shrink-0">
+        <div className="flex flex-wrap items-center gap-4">
           {/* Decision Filter Badges */}
           <div className="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-xl border border-slate-200/80">
             {(["All", "Pending", "Approved", "Swapped", "Negotiating"] as const).map((filter) => {
