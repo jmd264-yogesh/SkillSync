@@ -28,8 +28,6 @@ const adminPinnedItems: NavItem[] = [
   { title: "Dashboard",       href: "/admin/analytics",                icon: LayoutDashboard },
   { title: "Pipeline Kanban", href: "/admin/resourcing/kanban",        icon: LayoutGrid },
   { title: "Simulator",       href: "/admin/resourcing/simulator",     icon: TrendingUp },
-  { title: "Match Engine",    href: "/admin/resourcing/match",         icon: Zap },
-  { title: "PM Questionnaire", href: "/admin/resourcing/questionnaire", icon: ClipboardList },
   { title: "Extension Radar", href: "/admin/resourcing/extension",     icon: Radar },
   { title: "Forecast",        href: "/admin/resourcing/forecast",      icon: LineChart },
   { title: "RM Copilot",      href: "/admin/copilot",                  icon: Bot },
@@ -47,6 +45,8 @@ const adminSetupItems: NavItem[] = [
 
 // Collapsed by default: remaining resourcing tools.
 const resourcingMoreItems: NavItem[] = [
+  { title: "Match Engine",       href: "/admin/resourcing/match",            icon: Zap },
+  { title: "PM Questionnaire",   href: "/admin/resourcing/questionnaire",    icon: ClipboardList },
   { title: "Pipeline Inception", href: "/admin/resourcing/pipeline",         icon: Lightbulb },
   { title: "Health Radar",       href: "/admin/resourcing/health",           icon: HeartPulse },
   { title: "Scenario Planner",   href: "/admin/resourcing/scenario-planner", icon: GitCompare },
